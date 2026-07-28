@@ -57,3 +57,4 @@ keybind = ctrl+alt+l=resize_split:right,20
 # Split utilities
 keybind = ctrl+shift+z=toggle_split_zoom
 keybind = ctrl+shift+e=equalize_splits
+keybind = ctrl+shift+w=close_surface
