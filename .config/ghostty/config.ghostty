@@ -8,7 +8,7 @@ font-size = 13
 adjust-cell-height = 5%
 
 # Automatically follow system light/dark appearance
-theme = Monokai Pro
+theme = Catppuccin Mocha
 
 # Transparency
 background-opacity = 0.90
