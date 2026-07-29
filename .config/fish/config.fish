@@ -13,3 +13,4 @@ alias la 'eza -a'
 alias l 'eza -lh'
 alias lsize 'eza -lah --sort=size --reverse'
 alias ltime 'eza -lah --sort=modified --reverse'
+zoxide init fish | source
