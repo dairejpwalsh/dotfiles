@@ -1,14 +1,17 @@
-
 # Linux Dotfiles
 
-Personal Linux configuration files managed using a bare Git repository.
+Personal Linux configuration files managed with a bare Git repository.
 
 ## Tracked configurations
 
-* Fish shell
-* Ghostty terminal
-* Git configuration
-* Additional application configuration files
+- Bash shell
+- Fish shell
+- Ghostty terminal
+- Git configuration
+- Neovim / AstroNvim configuration
+
+Fish's generated `~/.config/fish/fish_variables` file is intentionally not
+tracked; hand-written Fish configuration belongs in `config.fish` or `conf.d/`.
 
 ## Repository setup
 
@@ -23,11 +26,24 @@ git config --global alias.dotfiles \
 git dotfiles config --local status.showUntrackedFiles no
 ```
 
+The tracked `~/.gitconfig` loads optional machine-local Git settings from
+`~/.gitconfig.local`. Keep private or machine-specific values such as your email
+address there instead of committing them to this repository:
+
+```bash
+git config --file "$HOME/.gitconfig.local" user.email "you@example.com"
+```
+
+`user.useConfigOnly = true` is enabled, so Git will refuse to create commits
+until an email address is configured explicitly.
+
 ## Tracked files
 
 ```text
-~/.config/fish/
+~/.bashrc
+~/.config/fish/config.fish
 ~/.config/ghostty/
+~/.config/nvim/
 ~/.gitconfig
 ~/README.md
 ```
@@ -66,25 +82,61 @@ Clone the bare repository:
 git clone --bare git@github.com:YOUR_USERNAME/dotfiles.git "$HOME/.dotfiles"
 ```
 
-Create the Git alias:
+Back up or remove any existing files that the repository tracks before the
+checkout. In particular, do **not** create a global Git alias first: doing so
+would create `~/.gitconfig`, which is itself tracked and would block checkout.
+
+Check out the tracked files using the full bare-repository command:
 
 ```bash
-git config --global alias.dotfiles \
-  '!git --git-dir="$HOME/.dotfiles/" --work-tree="$HOME"'
+git --git-dir="$HOME/.dotfiles/" --work-tree="$HOME" checkout
+git --git-dir="$HOME/.dotfiles/" --work-tree="$HOME" \
+  config --local status.showUntrackedFiles no
 ```
 
-Check out the tracked files:
+The checked-out `.gitconfig` provides the `git dotfiles` alias. Configure your
+machine-local Git email separately:
 
 ```bash
-git dotfiles checkout
-git dotfiles config --local status.showUntrackedFiles no
+git config --file "$HOME/.gitconfig.local" user.email "you@example.com"
 ```
 
-Existing configuration files may need to be backed up or removed before checkout.
+Verify the installation:
+
+```bash
+git dotfiles status
+git config user.name
+git config user.email
+```
+
+## Optional tools
+
+The Fish configuration detects optional commands before using them. Install the
+ones you want:
+
+- `eza` for enhanced `ls` aliases
+- `zoxide` for smarter directory navigation
+- CachyOS Fish defaults from `/usr/share/cachyos-fish-config/cachyos-config.fish`
+  when running CachyOS
+
+The Neovim Markdown/image workflow additionally uses:
+
+- ImageMagick for inline image conversion in Snacks
+- `wl-clipboard` on Wayland or `xclip` on X11 for clipboard image pasting
+- Ghostscript for PDF rendering (optional)
+- Tectonic or another LaTeX engine for rendered math (optional)
+
+The Neovim geospatial file-browser integration can additionally use:
+
+- `exiftool` for image metadata
+- GDAL (`gdalinfo` and `ogrinfo`) for raster/vector metadata
+- QGIS for opening selected geospatial files
 
 ## Security
 
-Do not commit credentials, private keys, tokens, browser profiles, shell history, or other sensitive files.
+Do not commit credentials, private keys, tokens, browser profiles, shell history,
+or other sensitive files. Keep machine-specific Git identity data in
+`~/.gitconfig.local`, which is intentionally not tracked.
 
 Examples of files that should not be tracked:
 
@@ -94,4 +146,6 @@ Examples of files that should not be tracked:
 ~/.gnupg/
 ~/.netrc
 ~/.local/share/fish/fish_history
+~/.gitconfig.local
+~/.config/fish/fish_variables
 ```

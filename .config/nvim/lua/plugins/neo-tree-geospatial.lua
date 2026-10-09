@@ -78,6 +78,23 @@ return {
       -- Binary raster/vector datasets are inspected instead of being opened as
       -- text. Text formats such as GeoJSON, KML, GML and VRT still open normally
       -- and can be inspected explicitly with I.
+      -- Formats opened directly through snacks.image. Other recognised image
+      -- formats (for example camera RAW files) still go to the metadata view.
+      local viewable_image_exts = {
+        avif = true,
+        bmp = true,
+        gif = true,
+        heic = true,
+        icns = true,
+        jpeg = true,
+        jpg = true,
+        png = true,
+        svg = true,
+        tif = true,
+        tiff = true,
+        webp = true,
+      }
+
       local raster_dataset_exts = {
         asc = true,
         bil = true,
@@ -129,6 +146,11 @@ return {
         return ext and image_exts[ext] or false
       end
 
+      local function is_viewable_image(path)
+        local ext = extension(path)
+        return ext and viewable_image_exts[ext] or false
+      end
+
       local function is_raster_dataset(path)
         local ext = extension(path)
         return ext and raster_dataset_exts[ext] or false
@@ -165,6 +187,22 @@ return {
         vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
         vim.bo[buf].modifiable = false
         if filetype then vim.bo[buf].filetype = filetype end
+      end
+
+      local next_request_id = 0
+
+      local function begin_request(buf)
+        next_request_id = next_request_id + 1
+        vim.b[buf].neo_tree_metadata_request_id = next_request_id
+        return next_request_id
+      end
+
+      local function request_is_current(buf, request_id)
+        return vim.api.nvim_buf_is_valid(buf) and vim.b[buf].neo_tree_metadata_request_id == request_id
+      end
+
+      local function set_request_lines(buf, request_id, lines, filetype)
+        if request_is_current(buf, request_id) then set_buffer_lines(buf, lines, filetype) end
       end
 
       local function run(command, callback)
@@ -222,80 +260,89 @@ return {
         return false
       end
 
-      local function display_command(buf, path, tool, command, filetype)
+      local function display_command(buf, request_id, path, tool, command, filetype)
+        if not request_is_current(buf, request_id) then return end
+
         if vim.fn.executable(tool) ~= 1 then
-          set_buffer_lines(buf, {
+          set_request_lines(buf, request_id, {
             ("%s is not installed or is not in PATH."):format(tool),
             "Path: " .. path,
-          })
+          }, "text")
           return
         end
 
-        set_buffer_lines(buf, { ("Loading metadata with %s..."):format(tool) }, "text")
+        set_request_lines(buf, request_id, { ("Loading metadata with %s..."):format(tool) }, "text")
         run(command, function(result)
-          if not vim.api.nvim_buf_is_valid(buf) then return end
+          if not request_is_current(buf, request_id) then return end
           if result.code == 0 then
-            set_buffer_lines(buf, split_lines(result.stdout), filetype)
+            set_request_lines(buf, request_id, split_lines(result.stdout), filetype)
           else
-            set_buffer_lines(buf, command_failure(tool, path, result), "text")
+            set_request_lines(buf, request_id, command_failure(tool, path, result), "text")
           end
         end)
       end
 
-      local function display_exif(buf, path, prefix)
+      local function display_exif(buf, request_id, path, prefix)
+        if not request_is_current(buf, request_id) then return end
+
         if vim.fn.executable "exiftool" ~= 1 then
-          local lines = prefix or {}
+          local lines = vim.deepcopy(prefix or {})
           vim.list_extend(lines, {
             "ExifTool is not installed or is not in PATH.",
             "Path: " .. path,
           })
-          set_buffer_lines(buf, lines, "text")
+          set_request_lines(buf, request_id, lines, "text")
           return
         end
 
-        set_buffer_lines(buf, { "Loading metadata with ExifTool..." }, "text")
+        set_request_lines(buf, request_id, { "Loading metadata with ExifTool..." }, "text")
         run({ "exiftool", "-G", "-a", "-s", path }, function(result)
-          if not vim.api.nvim_buf_is_valid(buf) then return end
+          if not request_is_current(buf, request_id) then return end
           if result.code == 0 then
-            local lines = prefix or {}
+            local lines = vim.deepcopy(prefix or {})
             if #lines > 0 then table.insert(lines, "") end
             vim.list_extend(lines, split_lines(result.stdout))
-            set_buffer_lines(buf, lines, "text")
+            set_request_lines(buf, request_id, lines, "text")
           else
-            set_buffer_lines(buf, command_failure("exiftool", path, result), "text")
+            set_request_lines(buf, request_id, command_failure("exiftool", path, result), "text")
           end
         end)
       end
 
-      local function inspect_image(buf, path)
+      local function inspect_image(buf, request_id, path)
+        if not request_is_current(buf, request_id) then return end
+
         if vim.fn.executable "gdalinfo" ~= 1 then
-          display_exif(buf, path, {
+          display_exif(buf, request_id, path, {
             "gdalinfo is unavailable; spatial-image detection was skipped.",
           })
           return
         end
 
-        set_buffer_lines(buf, { "Checking for spatial referencing with gdalinfo..." }, "text")
+        set_request_lines(buf, request_id, { "Checking for spatial referencing with gdalinfo..." }, "text")
         run({ "gdalinfo", "-json", path }, function(result)
-          if not vim.api.nvim_buf_is_valid(buf) then return end
+          if not request_is_current(buf, request_id) then return end
 
           if result.code == 0 and is_spatial_gdal_json(result.stdout) then
-            display_command(buf, path, "gdalinfo", { "gdalinfo", path }, "gdalinfo")
+            display_command(buf, request_id, path, "gdalinfo", { "gdalinfo", path }, "gdalinfo")
           else
-            display_exif(buf, path)
+            display_exif(buf, request_id, path)
           end
         end)
       end
 
       local function inspect_dataset(buf, path)
+        if not vim.api.nvim_buf_is_valid(buf) then return end
+        local request_id = begin_request(buf)
+
         if is_image(path) then
-          inspect_image(buf, path)
+          inspect_image(buf, request_id, path)
         elseif is_raster_dataset(path) or is_text_raster(path) then
-          display_command(buf, path, "gdalinfo", { "gdalinfo", path }, "gdalinfo")
+          display_command(buf, request_id, path, "gdalinfo", { "gdalinfo", path }, "gdalinfo")
         elseif is_vector_dataset(path) or is_text_vector(path) then
-          display_command(buf, path, "ogrinfo", { "ogrinfo", "-al", "-so", path }, "ogrinfo")
+          display_command(buf, request_id, path, "ogrinfo", { "ogrinfo", "-al", "-so", path }, "ogrinfo")
         else
-          display_exif(buf, path)
+          display_exif(buf, request_id, path)
         end
       end
 
@@ -359,6 +406,13 @@ return {
         if not node then return end
 
         if node.type == "file" and node.path then
+          -- Images are opened normally so Snacks can render them directly in
+          -- Ghostty. Metadata remains available explicitly with the I mapping.
+          if is_viewable_image(node.path) then
+            filesystem_commands.open(state)
+            return
+          end
+
           if is_image(node.path) or is_raster_dataset(node.path) or is_vector_dataset(node.path) then
             open_info_in_buffer(node.path)
             return

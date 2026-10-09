@@ -15,6 +15,10 @@ PostGIS, structured data files, and reproducible Quarto reports.
 - `ripgrep` and `fd`/`fdfind` are strongly recommended
 - Python 3.11 or newer
 - Node.js for language servers and Markdown Preview
+- ImageMagick for Snacks image conversion
+- `wl-clipboard` on Wayland or `xclip` on X11 for clipboard image pasting
+- Ghostscript for PDF image rendering (optional)
+- Tectonic or another LaTeX engine for rendered Markdown math (optional)
 
 ### Geospatial tools
 
@@ -92,10 +96,12 @@ debugger, tests, and terminal should all point to the same interpreter.
 
 ### Opening files
 
-Pressing `<CR>` or `l` on any recognised image opens a metadata buffer instead
-of loading the binary file into Neovim.
+Pressing `<CR>` or `l` on a recognised image now opens the image directly in
+Neovim through `snacks.image`. In Ghostty this uses the Kitty graphics protocol,
+so normal PNG/JPEG/TIFF/WebP and other supported images are displayed rather
+than opened as binary text.
 
-The metadata selection is automatic:
+Press `I` when you want metadata instead. The metadata selection is automatic:
 
 1. `gdalinfo -json` checks whether the image has spatial referencing such as a
    coordinate system, geotransform, ground control points, RPC metadata, or
@@ -116,8 +122,8 @@ normal editing behavior.
 
 | Key | Action |
 | --- | --- |
-| `<CR>` / `l` | Open normally, or inspect an image/binary GIS dataset |
-| `I` | Inspect metadata for the selected file |
+| `<CR>` / `l` | Open files normally; display images; inspect binary GIS datasets |
+| `I` | Inspect image or GIS metadata for the selected file |
 | `Q` | Open the selected file in QGIS |
 
 Inside a metadata buffer:
@@ -142,8 +148,27 @@ or another local secret store.
 
 ## Quarto and Markdown
 
-Quarto support is enabled for reproducible scientific reports. Markdown Preview
-is also available:
+Quarto support is enabled for reproducible scientific reports. Markdown and
+Quarto buffers are rendered inside Neovim with `render-markdown.nvim`, while
+`snacks.image` displays referenced images inline in supported terminals such as
+Ghostty. In insert mode the rendered Markdown decorations get out of the way so
+the source remains easy to edit.
+
+Clipboard screenshots and images can be pasted with `img-clip.nvim`. They are
+saved beneath an `assets/` directory relative to the current document and a
+relative Markdown image link is inserted automatically.
+
+### Markdown mappings
+
+| Key | Action |
+| --- | --- |
+| `<Leader>mh` | Show the image under the cursor in a larger floating preview |
+| `<Leader>mp` | Paste a clipboard image into `assets/` and insert its Markdown link |
+| `<Leader>mr` | Toggle rendered Markdown for the current buffer |
+| `<Leader>ms` | Open render-markdown's side preview |
+| `<Leader>mb` | Toggle the browser-based Markdown Preview |
+
+The browser preview commands remain available for Markdown files:
 
 ```vim
 :MarkdownPreview
@@ -151,13 +176,32 @@ is also available:
 :MarkdownPreviewStop
 ```
 
+After installation, verify the image and clipboard integrations with:
+
+```vim
+:checkhealth snacks
+:checkhealth img-clip
+```
+
+A minimal image test is:
+
+```markdown
+# Image test
+
+![Example](./assets/example.png)
+```
+
+The Quarto plugin registers its Tree-sitter language as Markdown, so `.qmd`
+documents receive the same rendered Markdown treatment and inline-image
+parsing.
+
 ## Important files
 
 ```text
 after/lsp/basedpyright.lua          BasedPyright defaults
 lua/community.lua                   Python/data/database community packs
 lua/plugins/neo-tree-geospatial.lua Metadata and QGIS integration
-lua/plugins/markdown-preview.lua    Browser Markdown preview
+lua/plugins/markdown.lua            Inline images, rendered Markdown and image paste
 lua/polish.lua                      Filetype and indentation additions
 examples/pyproject.toml             Python project baseline
 ```
