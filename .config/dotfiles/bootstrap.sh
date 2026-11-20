@@ -105,7 +105,9 @@ install_packages() {
   mapfile -t packages < <(sed -e 's/#.*//' -e 's/[[:space:]]//g' -e '/^$/d' "${lists[@]}")
   log "Installing ${#packages[@]} packages with pacman"
   # Read pacman's confirmation from the terminal, not from the piped script.
+  # (The redirect only needs to read the terminal, so it doesn't need root.)
   if [[ -r /dev/tty ]]; then
+    # shellcheck disable=SC2024
     sudo pacman -S --needed "${packages[@]}" </dev/tty
   else
     sudo pacman -S --needed --noconfirm "${packages[@]}"

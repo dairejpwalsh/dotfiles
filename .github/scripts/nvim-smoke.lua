@@ -12,6 +12,9 @@ local function check(ok, message)
   if not ok then table.insert(failures, message) end
 end
 local function out(text) io.stdout:write(text .. "\n") end
+-- Progress goes to stderr, which is unbuffered, so a hang shows where it stopped.
+local function progress(text) io.stderr:write("[smoke] " .. text .. "\n") end
+progress "started"
 
 -- Errors reported from here on, while every plugin is force-loaded below.
 local notify = vim.notify
@@ -31,10 +34,11 @@ end
 local names = vim.tbl_keys(lazy_config.plugins)
 table.sort(names)
 for _, name in ipairs(names) do
+  progress("loading " .. name)
   local ok, err = pcall(require("lazy").load, { plugins = { name } })
   check(ok, ("loading %s: %s"):format(name, err))
 end
-out(("Loaded %d plugins"):format(#names))
+progress(("loaded %d plugins; checking settings"):format(#names))
 
 -- 3. Settings.
 check(lazy_config.plugins["bigfile.nvim"] == nil, "bigfile.nvim should not be installed")
@@ -94,6 +98,7 @@ local made = vim
 check(made.code == 0, "could not create sample Parquet: " .. (made.stderr or ""))
 
 for path, expected in pairs { [csv] = "alpha", [parquet] = "gamma", [geojson] = "delta" } do
+  progress("previewing " .. vim.fn.fnamemodify(path, ":t"))
   local command = preview.command(path, { width = 100 })
   if not command then
     check(false, "no preview command for " .. path)
