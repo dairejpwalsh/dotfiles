@@ -23,9 +23,7 @@ end
 -- 1. lazy.nvim spec problems, such as importing a module that no longer exists.
 local lazy_config = require "lazy.core.config"
 for _, notif in ipairs(lazy_config.spec.notifs or {}) do
-  if notif.level >= vim.log.levels.WARN then
-    table.insert(failures, ("lazy spec: %s"):format(notif.msg))
-  end
+  if notif.level >= vim.log.levels.WARN then table.insert(failures, ("lazy spec: %s"):format(notif.msg)) end
 end
 
 -- 2. Load every plugin, so configuration errors in lazily loaded plugins
@@ -52,7 +50,10 @@ check(
 )
 check(settings.disableOrganizeImports == true, "basedpyright should leave import sorting to Ruff")
 
-check((vim.g.colors_name or ""):match "^catppuccin" ~= nil, "colorscheme should be catppuccin, got " .. tostring(vim.g.colors_name))
+check(
+  (vim.g.colors_name or ""):match "^catppuccin" ~= nil,
+  "colorscheme should be catppuccin, got " .. tostring(vim.g.colors_name)
+)
 
 local formats = require("snacks").image.config.formats or {}
 for _, format in ipairs { "png", "tif", "tiff", "JPG" } do

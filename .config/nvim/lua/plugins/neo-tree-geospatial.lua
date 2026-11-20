@@ -125,9 +125,7 @@ return {
 
       local text_raster_exts = { vrt = true }
 
-      local function extension(path)
-        return path:lower():match "%.([a-z0-9]+)$"
-      end
+      local function extension(path) return path:lower():match "%.([a-z0-9]+)$" end
 
       local function is_image(path)
         local ext = extension(path)
@@ -232,9 +230,7 @@ return {
         return lines
       end
 
-      local function has_values(value)
-        return type(value) == "table" and next(value) ~= nil
-      end
+      local function has_values(value) return type(value) == "table" and next(value) ~= nil end
 
       local function has_geotransform(value)
         if type(value) ~= "table" then return false end

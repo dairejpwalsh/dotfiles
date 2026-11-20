@@ -18,6 +18,7 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
 
@@ -40,18 +41,22 @@ jobs:
         run: stylua --check --config-path .config/nvim/.stylua.toml .config/nvim .github/scripts
 
       - name: selene
+        if: ${{ !cancelled() }}
         working-directory: .config/nvim
         run: selene .
 
       - name: Fish syntax
+        if: ${{ !cancelled() }}
         run: fish --no-execute .config/fish/config.fish
 
       - name: ShellCheck
+        if: ${{ !cancelled() }}
         run: shellcheck --shell=bash .bashrc .config/dotfiles/bootstrap.sh
 
   secrets:
     name: Secret scan
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
         with:
@@ -66,6 +71,7 @@ jobs:
   packages:
     name: Arch package names
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     container: archlinux:latest
     steps:
       - uses: actions/checkout@v7
@@ -73,11 +79,16 @@ jobs:
       - name: Every package in packages.txt exists
         run: |
           pacman -Sy --noconfirm > /dev/null
-          grep -Ev '^[[:space:]]*(#|$)' .config/dotfiles/packages.txt | xargs pacman -Si > /dev/null
+          packages=$(grep -Ev '^[[:space:]]*(#|$)' .config/dotfiles/packages.txt)
+          total=$(echo "$packages" | wc -l)
+          found=$(echo "$packages" | xargs pacman -Si | grep -c '^Name')
+          echo "$found of $total packages found in the Arch repositories"
+          test "$found" -eq "$total"
 
   neovim:
     name: Neovim smoke test
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       # Use the checked-out repository as the Neovim configuration.
       XDG_CONFIG_HOME: ${{ github.workspace }}/.config
@@ -106,10 +117,10 @@ jobs:
       - name: Install plugins at the locked versions
         run: |
           nvim --version | head -n 1
-          nvim --headless "+Lazy! restore" +qa
+          timeout 900 nvim --headless "+Lazy! restore" +qa
 
       - name: Smoke test
-        run: nvim --headless -c "luafile .github/scripts/nvim-smoke.lua"
+        run: timeout 600 nvim --headless -c "luafile .github/scripts/nvim-smoke.lua"
 
       - name: lazy-lock.json lists every plugin
         run: |
