@@ -1,15 +1,8 @@
 -- Setup that runs after Lazy/AstroNvim initialization.
 
-vim.filetype.add {
-  extension = {
-    geojson = "json",
-    vrt = "xml",
-  },
-  filename = {
-    ["environment.yml"] = "yaml",
-    ["environment.yaml"] = "yaml",
-  },
-}
+-- GDAL virtual rasters (.vrt) are XML. Neovim already detects .geojson as
+-- JSON and environment.yml as YAML.
+vim.filetype.add { extension = { vrt = "xml" } }
 
 local data_file_settings = vim.api.nvim_create_augroup("geospatial_data_file_settings", { clear = true })
 vim.api.nvim_create_autocmd("FileType", {

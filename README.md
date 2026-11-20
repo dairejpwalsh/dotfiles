@@ -26,6 +26,17 @@ git config --global alias.dotfiles \
 git dotfiles config --local status.showUntrackedFiles no
 ```
 
+After the first commit, connect the GitHub remote and set the upstream branch
+so that plain `git dotfiles push` and `git dotfiles pull` work:
+
+```bash
+git dotfiles remote add origin git@github.com:YOUR_USERNAME/dotfiles.git
+git dotfiles push -u origin main
+```
+
+Also add the [ignore list](#security) so sensitive files cannot be added by
+accident.
+
 The tracked `~/.gitconfig` loads optional machine-local Git settings from
 `~/.gitconfig.local`. Keep private or machine-specific values such as your email
 address there instead of committing them to this repository:
@@ -94,17 +105,29 @@ git --git-dir="$HOME/.dotfiles/" --work-tree="$HOME" \
   config --local status.showUntrackedFiles no
 ```
 
-The checked-out `.gitconfig` provides the `git dotfiles` alias. Configure your
-machine-local Git email separately:
+The checked-out `.gitconfig` provides the `git dotfiles` alias.
+
+`git clone --bare` does not create remote-tracking branches or an upstream, so
+`git dotfiles push` and `git dotfiles pull` fail until they are configured:
+
+```bash
+git dotfiles config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
+git dotfiles fetch origin
+git dotfiles branch --set-upstream-to=origin/main main
+```
+
+Add the [ignore list](#security), then configure your machine-local Git email
+separately:
 
 ```bash
 git config --file "$HOME/.gitconfig.local" user.email "you@example.com"
 ```
 
-Verify the installation:
+Verify the installation. The first line of `status -sb` should read
+`## main...origin/main`:
 
 ```bash
-git dotfiles status
+git dotfiles status -sb
 git config user.name
 git config user.email
 ```
@@ -148,4 +171,21 @@ Examples of files that should not be tracked:
 ~/.local/share/fish/fish_history
 ~/.gitconfig.local
 ~/.config/fish/fish_variables
+```
+
+On each machine, list them in the repository's local exclude file. Git then
+refuses to add them, even through a directory such as
+`git dotfiles add ~/.config/fish`, unless forced with `-f`:
+
+```bash
+mkdir -p "$HOME/.dotfiles/info"
+cat >> "$HOME/.dotfiles/info/exclude" <<'EOF'
+/.ssh/
+/.aws/credentials
+/.gnupg/
+/.netrc
+/.local/share/fish/fish_history
+/.gitconfig.local
+/.config/fish/fish_variables
+EOF
 ```

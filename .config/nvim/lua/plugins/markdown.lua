@@ -1,3 +1,30 @@
+-- snacks.image only opens files whose extension is in `formats`, matched
+-- case-sensitively. Snacks replaces list options rather than merging them, so
+-- this restates its defaults, adds `tif` (the usual TIFF/GeoTIFF extension),
+-- and adds upper-case variants such as the `.JPG` files cameras produce.
+local image_formats = {
+  "png",
+  "jpg",
+  "jpeg",
+  "gif",
+  "bmp",
+  "webp",
+  "tiff",
+  "tif",
+  "heic",
+  "avif",
+  "mp4",
+  "mov",
+  "avi",
+  "mkv",
+  "webm",
+  "pdf",
+  "icns",
+}
+for i = 1, #image_formats do
+  image_formats[#image_formats + 1] = image_formats[i]:upper()
+end
+
 ---@type LazySpec
 return {
   ---------------------------------------------------------------------------
@@ -25,25 +52,19 @@ return {
 
           -- Render Markdown inside Neovim
           ["<Leader>mr"] = {
-            function()
-              require("render-markdown").buf_toggle()
-            end,
+            function() require("render-markdown").buf_toggle() end,
             desc = "Markdown: toggle rendering",
           },
 
           -- Open a rendered side preview
           ["<Leader>ms"] = {
-            function()
-              require("render-markdown").preview()
-            end,
+            function() require("render-markdown").preview() end,
             desc = "Markdown: side preview",
           },
 
           -- Show the image under the cursor in a floating window
           ["<Leader>mh"] = {
-            function()
-              require("snacks").image.hover()
-            end,
+            function() require("snacks").image.hover() end,
             desc = "Markdown: image hover",
           },
 
@@ -71,6 +92,8 @@ return {
     opts = {
       image = {
         enabled = true,
+
+        formats = image_formats,
 
         doc = {
           enabled = true,
@@ -219,9 +242,7 @@ return {
       "rmd",
     },
 
-    build = function()
-      vim.fn["mkdp#util#install"]()
-    end,
+    build = function() vim.fn["mkdp#util#install"]() end,
 
     init = function()
       vim.g.mkdp_filetypes = {

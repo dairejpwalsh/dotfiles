@@ -4,8 +4,11 @@
 return {
   "AstroNvim/astrocommunity",
 
-  -- Python: BasedPyright, Ruff, debugpy, virtual environments and pytest.
-  { import = "astrocommunity.pack.python-ruff" },
+  -- Python: debugpy, virtual environments and pytest (base), BasedPyright,
+  -- and Ruff. Local overrides live in lua/plugins/python.lua.
+  { import = "astrocommunity.pack.python.base" },
+  { import = "astrocommunity.pack.python.basedpyright" },
+  { import = "astrocommunity.pack.python.ruff" },
 
   -- Project and geospatial data formats.
   { import = "astrocommunity.pack.json" },

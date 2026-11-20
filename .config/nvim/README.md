@@ -58,17 +58,19 @@ NVIM_APPNAME=astronvim_geo nvim
 
 ## Python tooling
 
-The AstroCommunity `python-ruff` pack provides:
+Three AstroCommunity Python packs are imported in `lua/community.lua`:
 
-- BasedPyright completion and type checking
-- Ruff linting, import sorting, and formatting
-- Python virtual-environment selection
-- `debugpy` debugging
-- pytest integration through Neotest
+- `pack.python.base`: `debugpy` debugging, virtual-environment selection with
+  venv-selector, and pytest integration through Neotest
+- `pack.python.basedpyright`: BasedPyright completion and type checking
+- `pack.python.ruff`: Ruff linting, import sorting, and formatting
 
-Global BasedPyright defaults live in `after/lsp/basedpyright.lua`. Project
-settings should normally be committed in `pyproject.toml`; a starter file is
-provided at `examples/pyproject.toml`.
+Global BasedPyright overrides live in `lua/plugins/python.lua`. They are set
+through AstroLSP rather than `after/lsp/`, because the pack configures
+BasedPyright with `vim.lsp.config()`, which Neovim ranks above `after/lsp/*.lua`
+files. Project settings should normally be committed in `pyproject.toml`, which
+takes precedence over both; a starter file is provided at
+`examples/pyproject.toml`.
 
 A recommended project layout is:
 
@@ -96,10 +98,23 @@ debugger, tests, and terminal should all point to the same interpreter.
 
 ### Opening files
 
-Pressing `<CR>` or `l` on a recognised image now opens the image directly in
-Neovim through `snacks.image`. In Ghostty this uses the Kitty graphics protocol,
-so normal PNG/JPEG/TIFF/WebP and other supported images are displayed rather
-than opened as binary text.
+Pressing `<CR>` or `l` on an image that `snacks.image` can render opens the
+picture in Neovim. In Ghostty this uses the Kitty graphics protocol. Rendered
+formats are PNG, JPEG, GIF, BMP, WebP, HEIC, AVIF, ICNS and TIFF, with
+lower-case or upper-case extensions (`.jpg` and `.JPG`); the list is set in
+`lua/plugins/markdown.lua`.
+
+- TIFF files are first checked with `gdalinfo`. GeoTIFFs and other spatially
+  referenced TIFFs open in the metadata view instead, because they are often
+  too large or have too high a bit depth to view as pictures. Plain TIFFs are
+  displayed.
+- Images Snacks cannot render, such as camera RAW files, open in the metadata
+  view.
+- SVG files open as text for editing.
+- On directories, `l` keeps AstroNvim's behaviour: expand a folder, or move to
+  its first child when it is already expanded.
+
+Metadata opens in the main editor window, not in the Neo-tree sidebar.
 
 Press `I` when you want metadata instead. The metadata selection is automatic:
 
@@ -122,7 +137,7 @@ normal editing behavior.
 
 | Key | Action |
 | --- | --- |
-| `<CR>` / `l` | Open files normally; display images; inspect binary GIS datasets |
+| `<CR>` / `l` | Open files normally; display images; inspect GeoTIFFs and binary GIS datasets |
 | `I` | Inspect image or GIS metadata for the selected file |
 | `Q` | Open the selected file in QGIS |
 
@@ -198,8 +213,8 @@ parsing.
 ## Important files
 
 ```text
-after/lsp/basedpyright.lua          BasedPyright defaults
 lua/community.lua                   Python/data/database community packs
+lua/plugins/python.lua              BasedPyright overrides
 lua/plugins/neo-tree-geospatial.lua Metadata and QGIS integration
 lua/plugins/markdown.lua            Inline images, rendered Markdown and image paste
 lua/polish.lua                      Filetype and indentation additions
