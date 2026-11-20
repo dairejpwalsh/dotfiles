@@ -8,6 +8,7 @@ branch=automation/update-neovim-plugins
 lockfile=.config/nvim/lazy-lock.json
 
 # One line per plugin whose locked commit changed or that is new.
+# shellcheck disable=SC2016 # the backticks are Markdown, not command substitution
 changes=$(git diff -U0 -- "$lockfile" | sed -nE 's/^\+  "([^"]+)": .*"commit": "([0-9a-f]{12}).*/- `\1` → `\2`/p')
 body=$(
   cat <<EOF

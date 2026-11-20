@@ -27,11 +27,11 @@ npm
 python
 uv
 
-# Molten: Jupyter kernels from Neovim (Python remote plugin host), and
-# jupytext for opening .ipynb notebooks as text
+# Molten: Jupyter kernels from Neovim (Python remote plugin host). jupytext,
+# for opening .ipynb notebooks, is only in the AUR, so bootstrap.sh installs it
+# with `uv tool install jupytext` instead.
 python-pynvim
 python-jupyter-client
-python-jupytext
 
 # Markdown, images and documents
 imagemagick

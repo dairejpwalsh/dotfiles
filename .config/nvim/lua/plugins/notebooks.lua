@@ -1,5 +1,5 @@
 -- Open Jupyter notebooks (.ipynb) as Markdown text and save them back as
--- notebooks, through the `jupytext` CLI (python-jupytext on Arch).
+-- notebooks, through the `jupytext` CLI (`uv tool install jupytext`).
 --
 -- Python notebooks get the "quarto" filetype, so they behave like .qmd files:
 -- rendered Markdown, language-server features inside code cells (otter), and
