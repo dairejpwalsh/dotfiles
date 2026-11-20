@@ -118,6 +118,11 @@ jobs:
       - name: Install plugins at the locked versions
         run: |
           nvim --version | head -n 1
+          # On first start lazy.nvim installs missing plugins at the newest
+          # versions their specs allow and rewrites lazy-lock.json. Put the
+          # committed lockfile back, then check out its commits.
+          timeout 900 nvim --headless +qa
+          git checkout -- .config/nvim/lazy-lock.json
           timeout 900 nvim --headless "+Lazy! restore" +qa
 
       - name: Smoke test
@@ -126,6 +131,6 @@ jobs:
       - name: lazy-lock.json lists every plugin
         run: |
           if ! git diff --exit-code -- .config/nvim/lazy-lock.json; then
-            echo "::error::lazy-lock.json is missing plugins. Add the lines shown in the diff above."
+            echo "::error::lazy-lock.json does not match the installed plugins. Apply the diff above."
             exit 1
           fi

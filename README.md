@@ -33,7 +33,10 @@ this machine's Git email, which is kept out of the repository:
 git config --file "$HOME/.gitconfig.local" user.email "you@example.com"
 ```
 
-Open a new shell and start `nvim` once to install its plugins.
+If Neovim is installed, the script also installs its plugins at the versions
+recorded in `lazy-lock.json`. Otherwise, start `nvim` once to install them and
+then run `:Lazy restore` in it: on first start lazy.nvim installs the newest
+versions the plugin specs allow rather than the locked ones.
 
 ### Manual install
 

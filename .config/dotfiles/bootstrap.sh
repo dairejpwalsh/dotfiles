@@ -52,9 +52,11 @@ main() {
   dot config status.showUntrackedFiles no
   dot fetch --quiet origin
 
+  local fresh_checkout=false
   if [[ -f $git_dir/index ]]; then
     log "Dotfiles are already checked out; update them with: git dotfiles pull"
   else
+    fresh_checkout=true
     local backup
     backup="$HOME/.dotfiles-backup/$(date +%Y%m%d-%H%M%S)"
     local moved=0 path
@@ -83,6 +85,19 @@ main() {
 
   if $install_packages; then install_packages; fi
 
+  # Install Neovim's plugins at the versions in lazy-lock.json. On first start
+  # lazy.nvim installs the newest versions the plugin specs allow and rewrites
+  # the lockfile, so put the committed lockfile back and check out its commits.
+  # Only on a fresh checkout, so a re-run never discards local lockfile changes.
+  local plugins_installed=false
+  if $fresh_checkout && command -v nvim >/dev/null; then
+    log "Installing Neovim plugins at the locked versions"
+    nvim --headless +qa </dev/null
+    dot checkout -- .config/nvim/lazy-lock.json
+    nvim --headless "+Lazy! restore" +qa </dev/null
+    plugins_installed=true
+  fi
+
   log "Done."
   if ! git config --file "$HOME/.gitconfig.local" user.email >/dev/null 2>&1; then
     echo
@@ -90,7 +105,12 @@ main() {
     echo "  git config --file \"\$HOME/.gitconfig.local\" user.email \"you@example.com\""
   fi
   echo
-  echo "Next: open a new shell, then start nvim once to install its plugins."
+  if $fresh_checkout && ! $plugins_installed; then
+    echo "Next: open a new shell. Start nvim once to install its plugins, then run"
+    echo ":Lazy restore in it to switch them to the versions in lazy-lock.json."
+  else
+    echo "Next: open a new shell."
+  fi
 }
 
 install_packages() {
