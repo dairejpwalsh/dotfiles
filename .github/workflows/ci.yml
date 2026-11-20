@@ -79,15 +79,17 @@ jobs:
     name: Neovim smoke test
     runs-on: ubuntu-latest
     env:
+      # Use the checked-out repository as the Neovim configuration.
       XDG_CONFIG_HOME: ${{ github.workspace }}/.config
-      XDG_DATA_HOME: ${{ runner.temp }}/xdg/data
-      XDG_STATE_HOME: ${{ runner.temp }}/xdg/state
-      XDG_CACHE_HOME: ${{ runner.temp }}/xdg/cache
     steps:
       - uses: actions/checkout@v7
 
       - name: Install Neovim, DuckDB, Tree-sitter CLI and Molten's Python host
         run: |
+          # Keep plugin data, state and caches out of the workspace.
+          for dir in data state cache; do
+            echo "XDG_${dir^^}_HOME=$RUNNER_TEMP/xdg/$dir" >> "$GITHUB_ENV"
+          done
           bin="$RUNNER_TEMP/bin"
           mkdir -p "$bin"
           curl -fsSL https://github.com/neovim/neovim/releases/download/stable/nvim-linux-x86_64.tar.gz \
