@@ -1,0 +1,42 @@
+# Packages these dotfiles expect, by Arch Linux name. Installed by
+# `bootstrap.sh --packages`; CI checks every name exists in the Arch repos.
+# One package per line; `#` starts a comment.
+
+# Shell and terminal
+fish
+ghostty
+eza
+zoxide
+direnv
+
+# Neovim and the tools AstroNvim, Mason and Tree-sitter need
+neovim
+git
+gcc
+make
+unzip
+ripgrep
+fd
+tree-sitter-cli
+nodejs
+npm
+python
+uv
+
+# Molten: Jupyter kernels from Neovim (Python remote plugin host)
+python-pynvim
+python-jupyter-client
+
+# Markdown, images and documents
+imagemagick
+wl-clipboard
+xclip
+ghostscript
+tectonic
+
+# Geospatial and data
+gdal
+perl-image-exiftool
+qgis
+duckdb
+postgresql

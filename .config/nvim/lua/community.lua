@@ -4,6 +4,9 @@
 return {
   "AstroNvim/astrocommunity",
 
+  -- Catppuccin, matching Ghostty (configured in lua/plugins/colorscheme.lua).
+  { import = "astrocommunity.colorscheme.catppuccin" },
+
   -- Python: debugpy, virtual environments and pytest (base), BasedPyright,
   -- and Ruff. Local overrides live in lua/plugins/python.lua.
   { import = "astrocommunity.pack.python.base" },
@@ -20,11 +23,14 @@ return {
   { import = "astrocommunity.pack.sql" },
   { import = "astrocommunity.pack.full-dadbod" },
 
-  -- Large structured files and data inspection.
-  { import = "astrocommunity.editing-support.bigfile-nvim" },
+  -- Structured data inspection. Large files are handled by AstroCore's
+  -- built-in large_buf check, which also catches very long lines such as
+  -- minified GeoJSON.
   { import = "astrocommunity.programming-language-support.csv-vim" },
   { import = "astrocommunity.programming-language-support.nvim-jqx" },
 
-  -- Reproducible scientific and geospatial reports.
+  -- Reproducible scientific and geospatial reports, with code cells run in a
+  -- Jupyter kernel (configured in lua/plugins/molten.lua).
   { import = "astrocommunity.pack.quarto" },
+  { import = "astrocommunity.code-runner.molten-nvim" },
 }

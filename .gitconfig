@@ -3,5 +3,24 @@
 [user]
 	name = dairejpwalsh
 	useConfigOnly = true
+[init]
+	defaultBranch = main
+[push]
+	# Create the upstream branch on the first `git push` of a new branch.
+	autoSetupRemote = true
+[pull]
+	rebase = true
+[rebase]
+	# Let `git pull` rebase over uncommitted changes, restoring them afterwards.
+	autoStash = true
+[fetch]
+	# Drop remote-tracking branches that were deleted on the remote.
+	prune = true
+[merge]
+	# Show the common ancestor in conflicts, without the lines both sides share.
+	conflictStyle = zdiff3
+[diff]
+	algorithm = histogram
+# Keep this last so machine-local settings override everything above.
 [include]
 	path = ~/.gitconfig.local

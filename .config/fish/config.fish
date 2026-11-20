@@ -21,4 +21,12 @@ if status is-interactive
     if command -q zoxide
         zoxide init fish | source
     end
+
+    # Load and unload per-project environments (.envrc) on cd.
+    if command -q direnv
+        direnv hook fish | source
+    end
+
+    # `dots status`, `dots add ...`: expands to the bare-repository command.
+    abbr --add dots 'git dotfiles'
 end

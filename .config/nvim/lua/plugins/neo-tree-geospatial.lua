@@ -290,7 +290,7 @@ return {
           return
         end
 
-        set_request_lines(buf, request_id, { ("Loading metadata with %s..."):format(tool) }, "text")
+        set_request_lines(buf, request_id, { ("Running %s..."):format(tool) }, "text")
         run(command, function(result)
           if not request_is_current(buf, request_id) then return end
           if result.code == 0 then
@@ -365,6 +365,21 @@ return {
         end
       end
 
+      -- First rows of a table or spatial dataset, via DuckDB, sized to the
+      -- window the preview is shown in.
+      local function preview_rows(buf, path)
+        if not vim.api.nvim_buf_is_valid(buf) then return end
+        local request_id = begin_request(buf)
+        local win = vim.fn.bufwinid(buf)
+        local width = win ~= -1 and vim.api.nvim_win_get_width(win) or 200
+        local command = require("dataset_preview").command(path, { width = width })
+        if not command then
+          set_request_lines(buf, request_id, { "No row preview for this file type.", "Path: " .. path }, "text")
+          return
+        end
+        display_command(buf, request_id, path, "duckdb", command, "text")
+      end
+
       -- Exact name lookup. vim.fn.bufnr() treats its argument as a file
       -- pattern and accepts partial matches, so "a.tif" could find "a.tiff".
       local function find_buffer(name)
@@ -397,8 +412,10 @@ return {
         vim.api.nvim_set_current_win(win)
       end
 
-      local function open_info_in_buffer(state, path)
-        local bufname = "metadata://" .. path
+      -- Opens (or focuses) a read-only scratch buffer named `scheme .. path`
+      -- and fills it with `render(buf, path)`. `r` re-renders, `q` closes.
+      local function open_view(state, scheme, path, render)
+        local bufname = scheme .. path
         local existing = find_buffer(bufname)
         if existing then
           show_buffer(state, existing)
@@ -414,15 +431,17 @@ return {
 
         vim.keymap.set("n", "q", function()
           if vim.api.nvim_buf_is_valid(buf) then vim.api.nvim_buf_delete(buf, { force = true }) end
-        end, { buffer = buf, silent = true, desc = "Close metadata" })
+        end, { buffer = buf, silent = true, desc = "Close" })
 
         vim.keymap.set("n", "r", function()
-          if vim.api.nvim_buf_is_valid(buf) then inspect_dataset(buf, path) end
-        end, { buffer = buf, silent = true, desc = "Refresh metadata" })
+          if vim.api.nvim_buf_is_valid(buf) then render(buf, path) end
+        end, { buffer = buf, silent = true, desc = "Refresh" })
 
         show_buffer(state, buf)
-        inspect_dataset(buf, path)
+        render(buf, path)
       end
+
+      local function open_info_in_buffer(state, path) open_view(state, "metadata://", path, inspect_dataset) end
 
       local function selected_path(state)
         local node = state.tree:get_node()
@@ -432,6 +451,16 @@ return {
       local function inspect_selected(state)
         local path = selected_path(state)
         if path then open_info_in_buffer(state, path) end
+      end
+
+      local function preview_selected(state)
+        local path = selected_path(state)
+        if not path then return end
+        if not require("dataset_preview").supports(path) then
+          vim.notify("No row preview for " .. vim.fn.fnamemodify(path, ":t"), vim.log.levels.INFO)
+          return
+        end
+        open_view(state, "rows://", path, preview_rows)
       end
 
       local function open_in_qgis(state)
@@ -488,6 +517,7 @@ return {
         ["<cr>"] = open_or_info "open",
         l = open_or_info "child_or_open",
         I = inspect_selected,
+        E = preview_selected,
         Q = open_in_qgis,
       })
 

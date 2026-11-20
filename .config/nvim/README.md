@@ -15,17 +15,23 @@ PostGIS, structured data files, and reproducible Quarto reports.
 - `ripgrep` and `fd`/`fdfind` are strongly recommended
 - Python 3.11 or newer
 - Node.js for language servers and Markdown Preview
-- ImageMagick for Snacks image conversion
+- ImageMagick for Snacks image conversion and Molten plots
 - `wl-clipboard` on Wayland or `xclip` on X11 for clipboard image pasting
 - Ghostscript for PDF image rendering (optional)
 - Tectonic or another LaTeX engine for rendered Markdown math (optional)
+- `pynvim` and `jupyter_client` for the system Python, for Molten
+  (`python-pynvim` and `python-jupyter-client` on Arch)
+- direnv for per-project environments (optional, recommended)
 
 ### Geospatial tools
 
 - ExifTool (`exiftool`) for ordinary image metadata
 - GDAL (`gdalinfo` and `ogrinfo`) for raster and vector metadata
+- DuckDB (`duckdb`) for the Neo-tree `E` row preview
 - QGIS (`qgis`) for the optional Neo-tree `Q` mapping
 - PostgreSQL client tools when using PostGIS through Dadbod
+
+`~/.config/dotfiles/packages.txt` lists all of these by Arch package name.
 
 ## Installation
 
@@ -94,6 +100,59 @@ uv sync
 For an existing Conda or Mamba project, keep using that environment. The LSP,
 debugger, tests, and terminal should all point to the same interpreter.
 
+### Per-project environments with direnv
+
+Fish loads direnv when it is installed. Copy `examples/.envrc` to a project
+root and run `direnv allow`: from then on, entering the directory puts the
+project's `.venv` first on `PATH` and loads private settings from an untracked
+`.env`, and leaving it undoes both. Start Neovim from inside the project and
+BasedPyright, which takes the interpreter from `python` on `PATH`, the
+debugger, tests, terminal and Molten kernels all use that environment without
+selecting it in venv-selector. The example also shows the database variables
+that Dadbod reads (`DATABASE_URL` for `:DB`, `DBUI_URL` and `DBUI_NAME` for
+`:DBUI`).
+
+## Running code with Molten
+
+Molten runs code against a Jupyter kernel and shows the output, including
+plots drawn with image.nvim, under each cell. Quarto's code runner sends `.qmd`
+chunks through it.
+
+One-time setup: install `pynvim` and `jupyter_client` for the system Python
+(Molten's host is pinned to `/usr/bin/python3` so project environments don't
+need them), then run `:UpdateRemotePlugins` and restart Neovim if `:MoltenInit`
+is missing. Each project needs `ipykernel`:
+
+```sh
+uv add --dev ipykernel
+```
+
+With the project environment active, `<Leader>jmp` registers the project's
+kernel (asking for a name the first time) and starts Molten with it.
+
+| Key | Action |
+| --- | --- |
+| `<Leader>jmp` | Start Molten with the active project environment's kernel |
+| `<Leader>jmi` | Start Molten, choosing a kernel |
+| `<Leader>je` | Run an operator selection (for example `<Leader>jeip`) |
+| `<Leader>jl` / `<Leader>jc` | Run the current line / re-run the current cell |
+| `<Leader>jr` (visual) | Run the selection |
+| `<Leader>jmh` / `<Leader>jmI` / `<Leader>jmR` | Hide output / interrupt / restart the kernel |
+| `]j` / `[j` | Next / previous cell |
+
+In Quarto documents (`<LocalLeader>` is `,`):
+
+| Key | Action |
+| --- | --- |
+| `<LocalLeader>rc` | Run the current chunk |
+| `<LocalLeader>ra` / `<LocalLeader>rA` | Run this and all chunks above / every chunk |
+| `<LocalLeader>rl` | Run the current line |
+| `<LocalLeader>r` (visual) | Run the chunks in the selection |
+
+AstroCommunity's Molten module maps these under `<Leader>m` and `]c`/`[c`;
+`lua/plugins/molten.lua` moves them so they don't collide with the Markdown
+keys or Vim's diff navigation.
+
 ## Image and geospatial metadata in Neo-tree
 
 ### Opening files
@@ -133,19 +192,29 @@ vector datasets such as Shapefiles, GeoPackages, FlatGeobuf, and GeoParquet
 uses `ogrinfo -al -so`. Text formats such as GeoJSON, KML, GML, and VRT retain
 normal editing behavior.
 
+### Previewing rows
+
+The metadata view shows a dataset's structure; press `E` to see its first 40
+rows instead, read with DuckDB and fitted to the window width. This works for
+CSV, TSV, Parquet (including GeoParquet), JSON Lines, GeoPackage, Shapefile,
+FlatGeobuf, GeoJSON, KML, GML and GPX. Spatial formats use DuckDB's `spatial`
+extension, which DuckDB downloads the first time it is needed. The commands
+are built in `lua/dataset_preview.lua`.
+
 ### Neo-tree mappings
 
 | Key | Action |
 | --- | --- |
 | `<CR>` / `l` | Open files normally; display images; inspect GeoTIFFs and binary GIS datasets |
+| `E` | Preview the first rows of a table or spatial dataset |
 | `I` | Inspect image or GIS metadata for the selected file |
 | `Q` | Open the selected file in QGIS |
 
-Inside a metadata buffer:
+Inside a metadata or row-preview buffer:
 
 | Key | Action |
 | --- | --- |
-| `r` | Refresh metadata |
+| `r` | Refresh |
 | `q` | Close the buffer |
 
 If GDAL is unavailable, ordinary images still use ExifTool and the metadata
@@ -154,8 +223,10 @@ buffer states that spatial-image detection was skipped.
 ## Structured data and databases
 
 The configuration includes support for JSON, YAML, TOML, XML, CSV, SQL, and
-large files. The Bigfile integration disables expensive editor features for
-very large datasets.
+large files. AstroNvim's built-in large-file check turns off expensive editor
+features such as Tree-sitter highlighting for files over 1.5 MB, over
+100,000 lines, or with a line over 1,000 characters, which catches minified
+GeoJSON that is small on disk but a single huge line.
 
 Dadbod provides PostgreSQL/PostGIS connections and query buffers. Keep database
 credentials outside this repository, using environment variables, `.pgpass`,
@@ -210,13 +281,24 @@ The Quarto plugin registers its Tree-sitter language as Markdown, so `.qmd`
 documents receive the same rendered Markdown treatment and inline-image
 parsing.
 
+## Colour scheme
+
+Neovim uses Catppuccin to match Ghostty. At startup Neovim asks the terminal for
+its background colour, and Catppuccin picks Latte for a light background and
+Mocha for a dark one, following Ghostty's light/dark switch. A Neovim that is
+already open keeps its flavour until restarted. See `lua/plugins/colorscheme.lua`.
+
 ## Important files
 
 ```text
 lua/community.lua                   Python/data/database community packs
 lua/plugins/python.lua              BasedPyright overrides
-lua/plugins/neo-tree-geospatial.lua Metadata and QGIS integration
+lua/plugins/molten.lua              Molten, image.nvim for plots, Quarto runner
+lua/plugins/neo-tree-geospatial.lua Metadata, row preview and QGIS integration
+lua/dataset_preview.lua             DuckDB row-preview commands
 lua/plugins/markdown.lua            Inline images, rendered Markdown and image paste
+lua/plugins/colorscheme.lua         Catppuccin following the terminal
 lua/polish.lua                      Filetype and indentation additions
 examples/pyproject.toml             Python project baseline
+examples/.envrc                     direnv template for projects
 ```

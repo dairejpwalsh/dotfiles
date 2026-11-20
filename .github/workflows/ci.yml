@@ -1,0 +1,117 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  STYLUA_VERSION: v2.6.0
+  SELENE_VERSION: 0.32.0
+  GITLEAKS_VERSION: 8.30.1
+  DUCKDB_VERSION: v1.5.6
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install StyLua, selene and fish
+        run: |
+          bin="$RUNNER_TEMP/bin"
+          mkdir -p "$bin"
+          curl -fsSL -o "$RUNNER_TEMP/stylua.zip" \
+            "https://github.com/JohnnyMorganz/StyLua/releases/download/${STYLUA_VERSION}/stylua-linux-x86_64.zip"
+          curl -fsSL -o "$RUNNER_TEMP/selene.zip" \
+            "https://github.com/Kampfkarren/selene/releases/download/${SELENE_VERSION}/selene-${SELENE_VERSION}-linux.zip"
+          unzip -q "$RUNNER_TEMP/stylua.zip" -d "$bin"
+          unzip -q "$RUNNER_TEMP/selene.zip" -d "$bin"
+          chmod +x "$bin/stylua" "$bin/selene"
+          echo "$bin" >> "$GITHUB_PATH"
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq fish
+
+      - name: StyLua
+        run: stylua --check --config-path .config/nvim/.stylua.toml .config/nvim .github/scripts
+
+      - name: selene
+        working-directory: .config/nvim
+        run: selene .
+
+      - name: Fish syntax
+        run: fish --no-execute .config/fish/config.fish
+
+      - name: ShellCheck
+        run: shellcheck --shell=bash .bashrc .config/dotfiles/bootstrap.sh
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Gitleaks (full history)
+        run: |
+          curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz -C "$RUNNER_TEMP" gitleaks
+          "$RUNNER_TEMP/gitleaks" git --redact --verbose .
+
+  packages:
+    name: Arch package names
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Every package in packages.txt exists
+        run: |
+          pacman -Sy --noconfirm > /dev/null
+          grep -Ev '^[[:space:]]*(#|$)' .config/dotfiles/packages.txt | xargs pacman -Si > /dev/null
+
+  neovim:
+    name: Neovim smoke test
+    runs-on: ubuntu-latest
+    env:
+      XDG_CONFIG_HOME: ${{ github.workspace }}/.config
+      XDG_DATA_HOME: ${{ runner.temp }}/xdg/data
+      XDG_STATE_HOME: ${{ runner.temp }}/xdg/state
+      XDG_CACHE_HOME: ${{ runner.temp }}/xdg/cache
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Neovim, DuckDB, Tree-sitter CLI and Molten's Python host
+        run: |
+          bin="$RUNNER_TEMP/bin"
+          mkdir -p "$bin"
+          curl -fsSL https://github.com/neovim/neovim/releases/download/stable/nvim-linux-x86_64.tar.gz \
+            | tar -xz -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/nvim-linux-x86_64/bin" >> "$GITHUB_PATH"
+          curl -fsSL -o "$RUNNER_TEMP/duckdb.zip" \
+            "https://github.com/duckdb/duckdb/releases/download/${DUCKDB_VERSION}/duckdb_cli-linux-amd64.zip"
+          unzip -q "$RUNNER_TEMP/duckdb.zip" -d "$bin"
+          echo "$bin" >> "$GITHUB_PATH"
+          npm install --global --silent tree-sitter-cli
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq python3-pynvim python3-jupyter-client
+
+      - name: Install plugins at the locked versions
+        run: |
+          nvim --version | head -n 1
+          nvim --headless "+Lazy! restore" +qa
+
+      - name: Smoke test
+        run: nvim --headless -c "luafile .github/scripts/nvim-smoke.lua"
+
+      - name: lazy-lock.json lists every plugin
+        run: |
+          if ! git diff --exit-code -- .config/nvim/lazy-lock.json; then
+            echo "::error::lazy-lock.json is missing plugins. Add the lines shown in the diff above."
+            exit 1
+          fi

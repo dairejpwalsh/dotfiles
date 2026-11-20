@@ -8,89 +8,39 @@ Personal Linux configuration files managed with a bare Git repository.
 - Fish shell
 - Ghostty terminal
 - Git configuration
-- Neovim / AstroNvim configuration
+- Neovim / AstroNvim configuration (see `~/.config/nvim/README.md`)
+- Package list and bootstrap script for new machines
+- GitHub Actions checks for all of the above
 
 Fish's generated `~/.config/fish/fish_variables` file is intentionally not
 tracked; hand-written Fish configuration belongs in `config.fish` or `conf.d/`.
 
-## Repository setup
+## Install on a new machine
 
-The repository is stored as a bare Git repository:
-
-```bash
-git init --bare "$HOME/.dotfiles"
-
-git config --global alias.dotfiles \
-  '!git --git-dir="$HOME/.dotfiles/" --work-tree="$HOME"'
-
-git dotfiles config --local status.showUntrackedFiles no
-```
-
-After the first commit, connect the GitHub remote and set the upstream branch
-so that plain `git dotfiles push` and `git dotfiles pull` work:
+On Arch Linux or CachyOS, one command clones the repository, backs up any files
+it would replace, checks everything out and configures the remote and the
+ignore list:
 
 ```bash
-git dotfiles remote add origin git@github.com:YOUR_USERNAME/dotfiles.git
-git dotfiles push -u origin main
+curl -fsSL https://raw.githubusercontent.com/dairejpwalsh/dotfiles/main/.config/dotfiles/bootstrap.sh | bash -s -- --packages
 ```
 
-Also add the [ignore list](#security) so sensitive files cannot be added by
-accident.
-
-The tracked `~/.gitconfig` loads optional machine-local Git settings from
-`~/.gitconfig.local`. Keep private or machine-specific values such as your email
-address there instead of committing them to this repository:
+Leave off `-s -- --packages` to skip installing packages. The script is safe to
+re-run. Replaced files are moved to `~/.dotfiles-backup/<timestamp>/`. Then set
+this machine's Git email, which is kept out of the repository:
 
 ```bash
 git config --file "$HOME/.gitconfig.local" user.email "you@example.com"
 ```
 
-`user.useConfigOnly = true` is enabled, so Git will refuse to create commits
-until an email address is configured explicitly.
+Open a new shell and start `nvim` once to install its plugins.
 
-## Tracked files
+### Manual install
 
-```text
-~/.bashrc
-~/.config/fish/config.fish
-~/.config/ghostty/
-~/.config/nvim/
-~/.gitconfig
-~/README.md
-```
-
-## Common commands
-
-Check the repository status:
+These are the steps the bootstrap script runs. Clone the bare repository:
 
 ```bash
-git dotfiles status
-```
-
-Add a configuration file or directory:
-
-```bash
-git dotfiles add ~/.config/example
-```
-
-Commit changes:
-
-```bash
-git dotfiles commit -m "Update configuration"
-```
-
-Push changes:
-
-```bash
-git dotfiles push
-```
-
-## Install on another machine
-
-Clone the bare repository:
-
-```bash
-git clone --bare git@github.com:YOUR_USERNAME/dotfiles.git "$HOME/.dotfiles"
+git clone --bare https://github.com/dairejpwalsh/dotfiles.git "$HOME/.dotfiles"
 ```
 
 Back up or remove any existing files that the repository tracks before the
@@ -116,15 +66,8 @@ git dotfiles fetch origin
 git dotfiles branch --set-upstream-to=origin/main main
 ```
 
-Add the [ignore list](#security), then configure your machine-local Git email
-separately:
-
-```bash
-git config --file "$HOME/.gitconfig.local" user.email "you@example.com"
-```
-
-Verify the installation. The first line of `status -sb` should read
-`## main...origin/main`:
+Add the [ignore list](#security) and set your Git email as above. Verify the
+installation; the first line of `status -sb` should read `## main...origin/main`:
 
 ```bash
 git dotfiles status -sb
@@ -132,28 +75,118 @@ git config user.name
 git config user.email
 ```
 
-## Optional tools
+## Repository setup
 
-The Fish configuration detects optional commands before using them. Install the
-ones you want:
+How the repository was first created, for reference:
 
-- `eza` for enhanced `ls` aliases
-- `zoxide` for smarter directory navigation
-- CachyOS Fish defaults from `/usr/share/cachyos-fish-config/cachyos-config.fish`
-  when running CachyOS
+```bash
+git init --bare "$HOME/.dotfiles"
 
-The Neovim Markdown/image workflow additionally uses:
+git config --global alias.dotfiles \
+  '!git --git-dir="$HOME/.dotfiles/" --work-tree="$HOME"'
 
-- ImageMagick for inline image conversion in Snacks
-- `wl-clipboard` on Wayland or `xclip` on X11 for clipboard image pasting
-- Ghostscript for PDF rendering (optional)
-- Tectonic or another LaTeX engine for rendered math (optional)
+git dotfiles config --local status.showUntrackedFiles no
+```
 
-The Neovim geospatial file-browser integration can additionally use:
+After the first commit, connect the GitHub remote. With
+`push.autoSetupRemote` (set in the tracked `.gitconfig`), the first push also
+sets the upstream branch:
 
-- `exiftool` for image metadata
-- GDAL (`gdalinfo` and `ogrinfo`) for raster/vector metadata
-- QGIS for opening selected geospatial files
+```bash
+git dotfiles remote add origin git@github.com:YOUR_USERNAME/dotfiles.git
+git dotfiles push
+```
+
+## Git configuration
+
+The tracked `~/.gitconfig` loads optional machine-local Git settings from
+`~/.gitconfig.local`. Keep private or machine-specific values such as your email
+address there instead of committing them to this repository.
+`user.useConfigOnly = true` is enabled, so Git will refuse to create commits
+until an email address is configured explicitly.
+
+It also sets some defaults:
+
+| Setting | Effect |
+| --- | --- |
+| `init.defaultBranch = main` | New repositories start on `main` |
+| `push.autoSetupRemote = true` | The first `git push` of a new branch creates and tracks the remote branch |
+| `pull.rebase = true` | `git pull` rebases local commits instead of creating merge commits |
+| `rebase.autoStash = true` | Rebasing (including `git pull`) stashes and restores uncommitted changes |
+| `fetch.prune = true` | Fetching removes remote-tracking branches deleted on the remote |
+| `merge.conflictStyle = zdiff3` | Conflicts also show the common ancestor version |
+| `diff.algorithm = histogram` | Diffs that line up moved and repeated code more readably |
+
+## Tracked files
+
+```text
+~/.bashrc
+~/.config/dotfiles/        bootstrap.sh and package lists
+~/.config/fish/config.fish
+~/.config/ghostty/
+~/.config/nvim/
+~/.github/                 CI workflow and Neovim smoke test
+~/.gitconfig
+~/README.md
+```
+
+## Common commands
+
+In Fish, the abbreviation `dots` expands to `git dotfiles`.
+
+Check the repository status:
+
+```bash
+git dotfiles status
+```
+
+Add a configuration file or directory:
+
+```bash
+git dotfiles add ~/.config/example
+```
+
+Commit changes:
+
+```bash
+git dotfiles commit -m "Update configuration"
+```
+
+Push changes:
+
+```bash
+git dotfiles push
+```
+
+## Packages
+
+`~/.config/dotfiles/packages.txt` lists everything these dotfiles use, by Arch
+package name, and `packages-cachyos.txt` adds CachyOS-only packages. Install
+them on an existing machine by re-running the bootstrap script, which skips
+everything already set up:
+
+```bash
+~/.config/dotfiles/bootstrap.sh --packages
+```
+
+The Fish configuration detects optional commands before using them: `eza` for
+`ls` aliases, `zoxide` for directory jumping, `direnv` for per-project
+environments, and the CachyOS Fish defaults (which include the pure prompt)
+when running CachyOS. The Neovim README explains what its tools are for.
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every push and pull request:
+
+- **Lint:** StyLua and selene for the Neovim Lua, `fish --no-execute`, and
+  ShellCheck for `.bashrc` and the bootstrap script
+- **Secrets:** Gitleaks scans the full history for committed credentials
+- **Packages:** every name in `packages.txt` must exist in the Arch repositories
+- **Neovim:** installs the plugins at the versions in `lazy-lock.json`, then
+  runs `.github/scripts/nvim-smoke.lua`. That script fails on plugin spec or
+  loading errors, checks the Python, Molten, Catppuccin and image settings,
+  and runs the DuckDB previews against sample files. The job also fails if
+  `lazy-lock.json` is missing any plugin, and prints the entries to add.
 
 ## Security
 
@@ -173,9 +206,10 @@ Examples of files that should not be tracked:
 ~/.config/fish/fish_variables
 ```
 
-On each machine, list them in the repository's local exclude file. Git then
+The bootstrap script lists these in the repository's local exclude file, so Git
 refuses to add them, even through a directory such as
-`git dotfiles add ~/.config/fish`, unless forced with `-f`:
+`git dotfiles add ~/.config/fish`, unless forced with `-f`. To add the list by
+hand:
 
 ```bash
 mkdir -p "$HOME/.dotfiles/info"
@@ -187,5 +221,6 @@ cat >> "$HOME/.dotfiles/info/exclude" <<'EOF'
 /.local/share/fish/fish_history
 /.gitconfig.local
 /.config/fish/fish_variables
+/.dotfiles-backup/
 EOF
 ```
