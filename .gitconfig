@@ -21,6 +21,18 @@
 	conflictStyle = zdiff3
 [diff]
 	algorithm = histogram
+[delta]
+	# Used when delta is the pager: Fish and Bash set GIT_PAGER=delta when it is
+	# installed. For a narrow split: git -c delta.side-by-side=false diff
+	navigate = true
+	line-numbers = true
+	side-by-side = true
+[gpg]
+	# Signing uses SSH keys. Turn it on per machine with
+	# ~/.config/dotfiles/setup-signing.sh (settings go in ~/.gitconfig.local).
+	format = ssh
+[gpg "ssh"]
+	allowedSignersFile = ~/.config/git/allowed_signers
 # Keep this last so machine-local settings override everything above.
 [include]
 	path = ~/.gitconfig.local

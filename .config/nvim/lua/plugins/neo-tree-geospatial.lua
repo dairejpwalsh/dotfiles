@@ -386,26 +386,42 @@ return {
 
       -- Neo-tree evicts any other buffer shown in its sidebar window by
       -- deleting it and editing it again by name, which would destroy a
-      -- scratch buffer. Show it in the window Neo-tree would open a file in.
+      -- scratch buffer. Use the window Neo-tree would open a file in, or nil
+      -- when only the tree is open.
+      local function target_window(state)
+        -- Neo-tree is in the editor window itself, so replacing it is expected.
+        if state.current_position == "current" then return vim.api.nvim_get_current_win() end
+        local win, is_neo_tree = require("neo-tree.utils").get_appropriate_window(state)
+        if is_neo_tree then return nil end
+        return win
+      end
+
+      -- Where to split when only the tree is open.
+      local function split_side(state) return state.current_position == "right" and "left" or "right" end
+
       local function show_buffer(state, buf)
         local win = vim.fn.bufwinid(buf)
         if win == -1 then
-          if state.current_position == "current" then
-            -- Neo-tree is in the editor window itself, so replacing it is expected.
-            win = vim.api.nvim_get_current_win()
-          else
-            local target, is_neo_tree = require("neo-tree.utils").get_appropriate_window(state)
-            if is_neo_tree then
-              -- Only the tree is open: split beside it instead.
-              local side = state.current_position == "right" and "left" or "right"
-              vim.api.nvim_open_win(buf, true, { split = side, win = -1 })
-              return
-            end
-            win = target
+          win = target_window(state)
+          if not win then
+            vim.api.nvim_open_win(buf, true, { split = split_side(state), win = -1 })
+            return
           end
           vim.api.nvim_win_set_buf(win, buf)
         end
         vim.api.nvim_set_current_win(win)
+      end
+
+      -- Edits `file` (such as a rendered thumbnail) where Neo-tree would open it.
+      local function open_file(state, file)
+        local win = target_window(state)
+        if win then
+          vim.api.nvim_set_current_win(win)
+          vim.cmd("edit " .. vim.fn.fnameescape(file))
+        else
+          local position = split_side(state) == "left" and "topleft" or "botright"
+          vim.cmd(position .. " vsplit " .. vim.fn.fnameescape(file))
+        end
       end
 
       -- Opens (or focuses) a read-only scratch buffer named `scheme .. path`
@@ -449,14 +465,72 @@ return {
         if path then open_info_in_buffer(state, path) end
       end
 
+      -- Rasters that `E` renders as a thumbnail.
+      local thumbnail_exts = { j2k = true, jp2 = true, jpf = true, jpx = true, tif = true, tiff = true }
+      local function is_raster(path)
+        local ext = extension(path)
+        if ext and thumbnail_exts[ext] then return true end
+        return is_raster_dataset(path) or is_text_raster(path)
+      end
+
+      local thumbnail_dir
+
+      -- Renders a raster (GeoTIFF, JPEG 2000, ERDAS Imagine, VRT, ...) to a
+      -- small PNG with GDAL and opens it, so snacks.image shows it as a picture.
+      local function show_thumbnail(state, path)
+        for _, tool in ipairs { "gdalinfo", "gdal_translate" } do
+          if vim.fn.executable(tool) ~= 1 then
+            vim.notify(tool .. " is not installed or is not in PATH", vim.log.levels.WARN)
+            return
+          end
+        end
+        if not thumbnail_dir then
+          thumbnail_dir = vim.fn.tempname()
+          vim.fn.mkdir(thumbnail_dir, "p")
+        end
+        -- Named per source path, so rasters with the same file name don't collide.
+        local name = vim.fn.fnamemodify(path, ":t")
+        local stem = vim.fn.fnamemodify(path, ":t:r")
+        local out = ("%s/%s-%s.png"):format(thumbnail_dir, stem, vim.fn.sha256(path):sub(1, 8))
+        vim.notify("Rendering " .. name .. "...", vim.log.levels.INFO)
+
+        run({ "gdalinfo", "-json", path }, function(info_result)
+          local ok, info = pcall(vim.json.decode, info_result.stdout or "")
+          if info_result.code ~= 0 or not ok or type(info) ~= "table" then
+            vim.notify(("gdalinfo could not read %s:\n%s"):format(name, info_result.stderr or ""), vim.log.levels.ERROR)
+            return
+          end
+          local command = require("dataset_preview").thumbnail_command(path, info, out)
+          if not command then
+            vim.notify(name .. " has no raster bands to render (a container of subdatasets?)", vim.log.levels.WARN)
+            return
+          end
+          run(command, function(result)
+            if result.code ~= 0 then
+              vim.notify(("gdal_translate failed for %s:\n%s"):format(name, result.stderr or ""), vim.log.levels.ERROR)
+              return
+            end
+            -- Drop a thumbnail rendered earlier so the new file is read.
+            local previous = find_buffer(out)
+            if previous then vim.api.nvim_buf_delete(previous, { force = true }) end
+            open_file(state, out)
+          end)
+        end)
+      end
+
+      -- E: a thumbnail for rasters, the first rows for tables and vector data.
       local function preview_selected(state)
         local path = selected_path(state)
         if not path then return end
-        if not require("dataset_preview").supports(path) then
-          vim.notify("No row preview for " .. vim.fn.fnamemodify(path, ":t"), vim.log.levels.INFO)
-          return
+        if is_raster(path) then
+          show_thumbnail(state, path)
+        elseif require("dataset_preview").supports(path) then
+          open_view(state, "rows://", path, preview_rows)
+        elseif is_image(path) and snacks_can_display(path) then
+          filesystem_commands.open(state)
+        else
+          vim.notify("No preview for " .. vim.fn.fnamemodify(path, ":t"), vim.log.levels.INFO)
         end
-        open_view(state, "rows://", path, preview_rows)
       end
 
       local function open_in_qgis(state)

@@ -114,6 +114,45 @@ local function run()
     end
   end
   check(not preview.supports(dir .. "/notes.txt"), "plain text should not have a row preview")
+
+  -- 5. Raster thumbnail of a floating-point GeoTIFF (like an elevation model).
+  progress "rendering a raster thumbnail"
+  local asc = dir .. "/dem.asc"
+  vim.fn.writefile({
+    "ncols 4",
+    "nrows 3",
+    "xllcorner 0",
+    "yllcorner 0",
+    "cellsize 1",
+    "1.5 2.5 3.5 4.5",
+    "5.5 6.5 7.5 8.5",
+    "9.5 10.5 11.5 12.5",
+  }, asc)
+  local tif = dir .. "/dem.tif"
+  local converted = vim.system({ "gdal_translate", "-q", "-ot", "Float32", asc, tif }, { text = true }):wait()
+  check(converted.code == 0, "could not create sample GeoTIFF: " .. (converted.stderr or ""))
+  local info = vim.json.decode(vim.system({ "gdalinfo", "-json", tif }, { text = true }):wait().stdout)
+  local png = dir .. "/dem.png"
+  local command = preview.thumbnail_command(tif, info, png)
+  check(vim.tbl_contains(command or {}, "-scale"), "floating-point rasters should be stretched with -scale")
+  local rendered = command and vim.system(command, { text = true }):wait() or { code = -1, stderr = "no command" }
+  local file = io.open(png, "rb")
+  local header = file and file:read(8)
+  if file then file:close() end
+  check(rendered.code == 0 and header == "\137PNG\r\n\26\n", "thumbnail not rendered: " .. (rendered.stderr or ""))
+
+  -- 6. Notebooks open as Markdown text with the quarto filetype (jupytext.nvim).
+  progress "opening a notebook"
+  local notebook = dir .. "/analysis.ipynb"
+  local cell = '{"cell_type":"code","execution_count":null,"metadata":{},"outputs":[],"source":["print(42)"]}'
+  local metadata = '{"kernelspec":{"display_name":"Python 3","language":"python","name":"python3"}}'
+  local json = '{"cells":[' .. cell .. '],"metadata":' .. metadata .. ',"nbformat":4,"nbformat_minor":5}'
+  vim.fn.writefile({ json }, notebook)
+  vim.cmd("edit " .. vim.fn.fnameescape(notebook))
+  local text = table.concat(vim.api.nvim_buf_get_lines(0, 0, -1, false), "\n")
+  local is_markdown = text:find("```python", 1, true) and text:find("print(42)", 1, true)
+  check(is_markdown, "notebook should open as Markdown:\n" .. text)
+  check(vim.bo.filetype == "quarto", "notebooks should get the quarto filetype, got " .. vim.bo.filetype)
 end
 
 local ok, err = xpcall(run, debug.traceback)

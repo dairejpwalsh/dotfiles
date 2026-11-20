@@ -47,11 +47,14 @@ jobs:
 
       - name: Fish syntax
         if: ${{ !cancelled() }}
-        run: fish --no-execute .config/fish/config.fish
+        run: |
+          for file in .config/fish/config.fish .config/fish/functions/*.fish; do
+            fish --no-execute "$file"
+          done
 
       - name: ShellCheck
         if: ${{ !cancelled() }}
-        run: shellcheck --shell=bash .bashrc .config/dotfiles/bootstrap.sh
+        run: shellcheck --shell=bash .bashrc .config/dotfiles/*.sh .github/scripts/*.sh
 
   secrets:
     name: Secret scan
@@ -67,6 +70,16 @@ jobs:
           curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
             | tar -xz -C "$RUNNER_TEMP" gitleaks
           "$RUNNER_TEMP/gitleaks" git --redact --verbose .
+
+      - name: No tracked file matches never-track
+        if: ${{ !cancelled() }}
+        run: |
+          matches=$(git ls-files --cached --ignored --exclude-from=.config/dotfiles/never-track)
+          if [ -n "$matches" ]; then
+            echo "::error::These tracked files match .config/dotfiles/never-track (this repository is public):"
+            echo "$matches"
+            exit 1
+          fi
 
   packages:
     name: Arch package names
@@ -85,45 +98,76 @@ jobs:
           echo "$found of $total packages found in the Arch repositories"
           test "$found" -eq "$total"
 
-  neovim:
-    name: Neovim smoke test
+  ghostty:
+    name: Ghostty config
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    env:
-      # Use the checked-out repository as the Neovim configuration.
-      XDG_CONFIG_HOME: ${{ github.workspace }}/.config
+    timeout-minutes: 15
+    container: archlinux:latest
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install Neovim, DuckDB, Tree-sitter CLI and Molten's Python host
+      - name: ghostty +validate-config
         run: |
-          # Keep plugin data, state and caches out of the workspace.
-          for dir in data state cache; do
-            echo "XDG_${dir^^}_HOME=$RUNNER_TEMP/xdg/$dir" >> "$GITHUB_ENV"
-          done
-          bin="$RUNNER_TEMP/bin"
-          mkdir -p "$bin"
-          curl -fsSL https://github.com/neovim/neovim/releases/download/stable/nvim-linux-x86_64.tar.gz \
-            | tar -xz -C "$RUNNER_TEMP"
-          echo "$RUNNER_TEMP/nvim-linux-x86_64/bin" >> "$GITHUB_PATH"
-          curl -fsSL -o "$RUNNER_TEMP/duckdb.zip" \
-            "https://github.com/duckdb/duckdb/releases/download/${DUCKDB_VERSION}/duckdb_cli-linux-amd64.zip"
-          unzip -q "$RUNNER_TEMP/duckdb.zip" -d "$bin"
-          echo "$bin" >> "$GITHUB_PATH"
-          npm install --global --silent tree-sitter-cli
+          pacman -Syu --noconfirm ghostty > /dev/null
+          ghostty --version | sed -n 1p
+          ghostty +validate-config --config-file=.config/ghostty/config.ghostty
+
+  scripts:
+    name: Shell scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install fish and uv
+        run: |
           sudo apt-get update -qq
-          # fd: venv-selector is only enabled when fd is installed.
-          sudo apt-get install -y -qq python3-pynvim python3-jupyter-client fd-find
+          sudo apt-get install -y -qq fish
+          pipx install uv
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: setup-signing.sh makes commits verifiably signed
+        run: |
+          repo=$PWD
+          export HOME="$RUNNER_TEMP/signing-home"
+          mkdir -p "$HOME/.ssh"
+          cp .gitconfig "$HOME/.gitconfig"
+          ssh-keygen -q -t ed25519 -N '' -C ci -f "$HOME/.ssh/id_ed25519"
+          git config --file "$HOME/.gitconfig.local" user.email ci@example.invalid
+          "$repo/.config/dotfiles/setup-signing.sh"
+          "$repo/.config/dotfiles/setup-signing.sh" > /dev/null # safe to re-run
+          test "$(wc -l < "$HOME/.config/git/allowed_signers")" -eq 1
+          git init -q "$RUNNER_TEMP/signed"
+          cd "$RUNNER_TEMP/signed"
+          git commit -q --allow-empty -m "Signed commit"
+          git log --show-signature -1 | tee /dev/stderr | grep -q 'Good "git" signature'
+
+      - name: newproj creates a working project
+        if: ${{ !cancelled() }}
+        env:
+          XDG_CONFIG_HOME: ${{ github.workspace }}/.config
+        run: |
+          cd "$RUNNER_TEMP"
+          fish -c 'set -p fish_function_path $XDG_CONFIG_HOME/fish/functions; newproj --no-geo demo-proj'
+          cd demo-proj
+          test -f .envrc
+          uv run pytest -q
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run jupyter kernelspec list | grep -q demo-proj
+
+  neovim:
+    name: Neovim smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Neovim, DuckDB, GDAL, jupytext and Molten's Python host
+        run: .github/scripts/setup-neovim-ci.sh
 
       - name: Install plugins at the locked versions
-        run: |
-          nvim --version | head -n 1
-          # On first start lazy.nvim installs missing plugins at the newest
-          # versions their specs allow and rewrites lazy-lock.json. Put the
-          # committed lockfile back, then check out its commits.
-          timeout 900 nvim --headless +qa
-          git checkout -- .config/nvim/lazy-lock.json
-          timeout 900 nvim --headless "+Lazy! restore" +qa
+        run: .github/scripts/install-locked-plugins.sh
 
       - name: Smoke test
         run: timeout 600 nvim --headless -c "luafile .github/scripts/nvim-smoke.lua"
@@ -134,3 +178,9 @@ jobs:
             echo "::error::lazy-lock.json does not match the installed plugins. Apply the diff above."
             exit 1
           fi
+
+      - name: Python language servers attach and report diagnostics
+        if: ${{ !cancelled() }}
+        run: |
+          timeout 900 nvim --headless -c "MasonInstall basedpyright ruff" -c qall
+          timeout 420 nvim --headless -c "luafile .github/scripts/nvim-lsp.lua"

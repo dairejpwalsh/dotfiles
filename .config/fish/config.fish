@@ -3,6 +3,18 @@ if test -r /usr/share/cachyos-fish-config/cachyos-config.fish
     source /usr/share/cachyos-fish-config/cachyos-config.fish
 end
 
+# Use Neovim for commit messages, $EDITOR and man pages.
+if command -q nvim
+    set -gx EDITOR nvim
+    set -gx VISUAL nvim
+    set -gx MANPAGER 'nvim +Man!'
+end
+
+# Page Git output through delta when it is installed (options in ~/.gitconfig).
+if command -q delta
+    set -gx GIT_PAGER delta
+end
+
 # Aliases and directory jumping are for interactive shells only, so scripts and
 # `fish -c` keep calling the real commands.
 if status is-interactive

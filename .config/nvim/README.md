@@ -21,12 +21,14 @@ PostGIS, structured data files, and reproducible Quarto reports.
 - Tectonic or another LaTeX engine for rendered Markdown math (optional)
 - `pynvim` and `jupyter_client` for the system Python, for Molten
   (`python-pynvim` and `python-jupyter-client` on Arch)
+- `jupytext` for opening Jupyter notebooks (`python-jupytext` on Arch)
 - direnv for per-project environments (optional, recommended)
 
 ### Geospatial tools
 
 - ExifTool (`exiftool`) for ordinary image metadata
-- GDAL (`gdalinfo` and `ogrinfo`) for raster and vector metadata
+- GDAL (`gdalinfo`, `ogrinfo` and `gdal_translate`) for raster and vector
+  metadata and raster thumbnails
 - DuckDB (`duckdb`) for the Neo-tree `E` row preview
 - QGIS (`qgis`) for the optional Neo-tree `Q` mapping
 - PostgreSQL client tools when using PostGIS through Dadbod
@@ -157,6 +159,15 @@ AstroCommunity's Molten module maps these under `<Leader>m` and `]c`/`[c`;
 `lua/plugins/molten.lua` moves them so they don't collide with the Markdown
 keys or Vim's diff navigation.
 
+### Jupyter notebooks
+
+Opening an `.ipynb` file shows the notebook as Markdown text (via jupytext);
+saving writes it back as a notebook, keeping existing outputs. Python
+notebooks get the `quarto` filetype, so they render like `.qmd` documents and
+the Quarto runner keys above send cells to Molten. Code cells are fenced
+` ```python ` blocks; add a cell by adding a block. See
+`lua/plugins/notebooks.lua`.
+
 ## Image and geospatial metadata in Neo-tree
 
 ### Opening files
@@ -196,21 +207,31 @@ vector datasets such as Shapefiles, GeoPackages, FlatGeobuf, and GeoParquet
 uses `ogrinfo -al -so`. Text formats such as GeoJSON, KML, GML, and VRT retain
 normal editing behavior.
 
-### Previewing rows
+### Previewing data
 
-The metadata view shows a dataset's structure; press `E` to see its first 40
-rows instead, read with DuckDB and fitted to the window width. This works for
-CSV, TSV, Parquet (including GeoParquet), JSON Lines, GeoPackage, Shapefile,
-FlatGeobuf, GeoJSON, KML, GML and GPX. Spatial formats use DuckDB's `spatial`
-extension, which DuckDB downloads the first time it is needed. The commands
-are built in `lua/dataset_preview.lua`.
+The metadata view shows a dataset's structure; `E` shows its contents:
+
+- **Rasters** (GeoTIFF, JPEG 2000, ERDAS Imagine, VRT and the other raster
+  formats above) are rendered by `gdal_translate` to a PNG thumbnail of at
+  most 1024 pixels, opened as a picture. Single-band and floating-point data
+  such as elevation models are stretched to the full brightness range;
+  classified rasters keep their colour table; for three or more bands the
+  first three are shown as RGB. A NetCDF/HDF container of subdatasets has no
+  bands of its own, so it can't be previewed directly.
+- **Tables and vector data** show their first 40 rows, read with DuckDB and
+  fitted to the window width: CSV, TSV, Parquet (including GeoParquet), JSON
+  Lines, GeoPackage, Shapefile, FlatGeobuf, GeoJSON, KML, GML and GPX. Spatial
+  formats use DuckDB's `spatial` extension, which DuckDB downloads the first
+  time it is needed.
+
+The commands are built in `lua/dataset_preview.lua`.
 
 ### Neo-tree mappings
 
 | Key | Action |
 | --- | --- |
 | `<CR>` / `l` | Open files normally; display images; inspect GeoTIFFs and binary GIS datasets |
-| `E` | Preview the first rows of a table or spatial dataset |
+| `E` | Preview contents: a thumbnail for rasters, the first rows for tables and vector data |
 | `I` | Inspect image or GIS metadata for the selected file |
 | `Q` | Open the selected file in QGIS |
 
@@ -298,8 +319,9 @@ already open keeps its flavour until restarted. See `lua/plugins/colorscheme.lua
 lua/community.lua                   Python/data/database community packs
 lua/plugins/python.lua              BasedPyright overrides
 lua/plugins/molten.lua              Molten, image.nvim for plots, Quarto runner
-lua/plugins/neo-tree-geospatial.lua Metadata, row preview and QGIS integration
-lua/dataset_preview.lua             DuckDB row-preview commands
+lua/plugins/neo-tree-geospatial.lua Metadata, previews and QGIS integration
+lua/dataset_preview.lua             DuckDB row-preview and GDAL thumbnail commands
+lua/plugins/notebooks.lua           Jupyter notebooks through jupytext
 lua/plugins/markdown.lua            Inline images, rendered Markdown and image paste
 lua/plugins/colorscheme.lua         Catppuccin following the terminal
 lua/polish.lua                      Filetype and indentation additions

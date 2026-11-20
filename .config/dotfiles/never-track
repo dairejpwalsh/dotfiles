@@ -1,0 +1,32 @@
+# Paths that must never be committed: this repository is public. Gitignore
+# syntax, relative to $HOME. bootstrap.sh copies these into the repository's
+# local exclude file, so Git refuses to add them (even through a directory),
+# and CI fails if any tracked file matches.
+
+# Keys, credentials and tokens
+/.ssh/
+/.gnupg/
+/.aws/
+/.kube/
+/.docker/config.json
+/.netrc
+/.pgpass
+/.config/gh/hosts.yml
+.env
+
+# Machine-local Git settings (email, signing key) and signers list
+/.gitconfig.local
+/.config/git/allowed_signers
+
+# Shell state and history
+/.config/fish/fish_variables
+/.local/share/fish/fish_history
+/.bash_history
+/.psql_history
+/.python_history
+
+# QGIS profiles hold saved database connections and an authentication store
+/.local/share/QGIS/
+
+# Backups made by bootstrap.sh
+/.dotfiles-backup/

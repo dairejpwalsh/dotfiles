@@ -78,10 +78,9 @@ main() {
   local exclude="$git_dir/info/exclude" pattern
   mkdir -p "$(dirname "$exclude")"
   touch "$exclude"
-  for pattern in /.ssh/ /.aws/credentials /.gnupg/ /.netrc /.local/share/fish/fish_history \
-    /.gitconfig.local /.config/fish/fish_variables /.dotfiles-backup/; do
+  while IFS= read -r pattern; do
     grep -qxF -- "$pattern" "$exclude" || printf '%s\n' "$pattern" >>"$exclude"
-  done
+  done < <(grep -Ev '^[[:space:]]*(#|$)' "$HOME/.config/dotfiles/never-track")
 
   if $install_packages; then install_packages; fi
 

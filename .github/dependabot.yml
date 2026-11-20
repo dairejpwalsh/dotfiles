@@ -1,0 +1,8 @@
+# Keeps the GitHub Actions used by the workflows (actions/checkout) up to date.
+# The tool versions pinned in ci.yml's env block are updated by hand.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

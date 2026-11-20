@@ -5,12 +5,15 @@ Personal Linux configuration files managed with a bare Git repository.
 ## Tracked configurations
 
 - Bash shell
-- Fish shell
+- Fish shell, including the `newproj` project generator
 - Ghostty terminal
-- Git configuration
+- Git configuration, with delta diffs and optional SSH commit signing
 - Neovim / AstroNvim configuration (see `~/.config/nvim/README.md`)
 - Package list and bootstrap script for new machines
-- GitHub Actions checks for all of the above
+- GitHub Actions checks for all of the above, and weekly plugin updates
+
+**This repository is public.** Anything committed can be read by anyone; see
+[Security](#security).
 
 Fish's generated `~/.config/fish/fish_variables` file is intentionally not
 tracked; hand-written Fish configuration belongs in `config.fish` or `conf.d/`.
@@ -120,18 +123,61 @@ It also sets some defaults:
 | `merge.conflictStyle = zdiff3` | Conflicts also show the common ancestor version |
 | `diff.algorithm = histogram` | Diffs that line up moved and repeated code more readably |
 
+### Diffs with delta
+
+When delta (`git-delta`) is installed, Fish and Bash set `GIT_PAGER=delta`, so
+`git diff`, `git log -p` and `git show` are syntax-highlighted, side by side and
+with line numbers; `n`/`N` jump between files. Without delta Git uses its normal
+pager. In a narrow split, use `git -c delta.side-by-side=false diff`.
+
+### Signed commits
+
+Commit signing uses SSH keys and is off until you turn it on per machine:
+
+```bash
+~/.config/dotfiles/setup-signing.sh
+```
+
+It signs with `~/.ssh/id_ed25519` (or the key you pass), writes the settings to
+`~/.gitconfig.local`, and prints the public key to add on GitHub as a *signing
+key* (Settings > SSH and GPG keys > New SSH key > Key type: Signing Key), so
+commits show as Verified.
+
+## Terminal and shells
+
+- **Ghostty over SSH:** `ssh-env` and `ssh-terminfo` shell-integration features
+  make servers that don't know Ghostty's terminal type work: Ghostty installs its
+  terminfo on the server (needs `tic` there) or falls back to `xterm-256color`.
+- **Editor:** Fish and Bash set `EDITOR` and `VISUAL` to Neovim and show man
+  pages in Neovim (`MANPAGER='nvim +Man!'`) when it is installed.
+- **Bash** gets the same direnv and zoxide hooks as Fish, for sessions that use it.
+
 ## Tracked files
 
 ```text
 ~/.bashrc
-~/.config/dotfiles/        bootstrap.sh and package lists
-~/.config/fish/config.fish
+~/.config/dotfiles/        bootstrap.sh, setup-signing.sh, package lists, never-track
+~/.config/fish/            config.fish and functions/newproj.fish
 ~/.config/ghostty/
 ~/.config/nvim/
-~/.github/                 CI workflow and Neovim smoke test
+~/.github/                 CI and plugin-update workflows, their scripts, Dependabot
 ~/.gitconfig
 ~/README.md
 ```
+
+## Starting a Python project
+
+`newproj NAME` (Fish) creates a ready-to-use project in `./NAME` and cds into
+it:
+
+- a uv-managed package (`src/` layout) with pytest, Ruff, BasedPyright and
+  ipykernel, plus GeoPandas, Rasterio, Shapely and pyproj (skip them with
+  `--no-geo`)
+- the BasedPyright, Ruff and pytest settings from
+  `~/.config/nvim/examples/pyproject.toml`, and a starter test
+- `data/` and `outputs/` folders (ignored by Git, along with `.env`)
+- the direnv `.envrc`, already allowed, so the environment activates on `cd`
+- a Jupyter kernel named after the project, for `:MoltenInit NAME` in Neovim
 
 ## Common commands
 
@@ -181,49 +227,54 @@ when running CachyOS. The Neovim README explains what its tools are for.
 
 `.github/workflows/ci.yml` runs on every push and pull request:
 
-- **Lint:** StyLua and selene for the Neovim Lua, `fish --no-execute`, and
-  ShellCheck for `.bashrc` and the bootstrap script
-- **Secrets:** Gitleaks scans the full history for committed credentials
-- **Packages:** every name in `packages.txt` must exist in the Arch repositories
-- **Neovim:** installs the plugins at the versions in `lazy-lock.json`, then
-  runs `.github/scripts/nvim-smoke.lua`. That script fails on plugin spec or
-  loading errors, checks the Python, Molten, Catppuccin and image settings,
-  and runs the DuckDB previews against sample files. The job also fails if
-  `lazy-lock.json` is missing any plugin, and prints the entries to add.
+- **Lint:** StyLua and selene for the Neovim Lua, `fish --no-execute` for the
+  Fish files, and ShellCheck for `.bashrc` and every shell script
+- **Secret scan:** Gitleaks checks the full history for credentials, and the
+  job fails if any tracked file matches `.config/dotfiles/never-track`
+- **Arch package names:** every name in `packages.txt` exists in the Arch repos
+- **Ghostty config:** `ghostty +validate-config` with the latest Ghostty
+- **Shell scripts:** `setup-signing.sh` produces commits that verify, and
+  `newproj --no-geo` creates a project whose tests, lint and kernel work
+- **Neovim smoke test:** installs the plugins at the versions in
+  `lazy-lock.json` and runs `.github/scripts/nvim-smoke.lua`, which fails on
+  plugin spec or loading errors and checks the Python, Molten, Catppuccin,
+  image, notebook, Neo-tree, DuckDB-preview and raster-thumbnail behaviour.
+  The job also fails if `lazy-lock.json` doesn't match what was installed, and
+  checks that BasedPyright and Ruff start on a Python file and report errors.
+
+`.github/workflows/update-plugins.yml` runs every Monday: it updates the
+plugins, runs the smoke test against the new versions and, only if it passes,
+opens (or refreshes) a pull request with the new `lazy-lock.json`. Dependabot
+keeps the workflows' GitHub Actions up to date.
+
+### Repository settings
+
+Two settings on GitHub complete this; they can't be committed:
+
+1. **Settings > Actions > General > Workflow permissions:** tick *Allow GitHub
+   Actions to create and approve pull requests*, so the weekly plugin update
+   can open its pull request.
+2. **Settings > Rules > Rulesets > New branch ruleset** (or *Branches > Add
+   branch protection rule*) for `main`: *Require status checks to pass* with
+   the CI jobs (Lint, Secret scan, Arch package names, Ghostty config, Shell
+   scripts, Neovim smoke test). New machines install from `main`, so this
+   keeps a broken change from reaching them.
 
 ## Security
 
-Do not commit credentials, private keys, tokens, browser profiles, shell history,
-or other sensitive files. Keep machine-specific Git identity data in
-`~/.gitconfig.local`, which is intentionally not tracked.
+This repository is public: anything committed, now or in its history, can be
+read by anyone. Keep credentials, private keys, tokens, shell history and
+machine-specific details (hostnames in `~/.ssh/config`, internal paths, your
+email) out of it. Machine-specific Git settings live in the untracked
+`~/.gitconfig.local`.
 
-Examples of files that should not be tracked:
-
-```text
-~/.ssh/id_*
-~/.aws/credentials
-~/.gnupg/
-~/.netrc
-~/.local/share/fish/fish_history
-~/.gitconfig.local
-~/.config/fish/fish_variables
-```
-
-The bootstrap script lists these in the repository's local exclude file, so Git
+`~/.config/dotfiles/never-track` lists paths that must never be committed. The
+bootstrap script copies them into the repository's local exclude file, so Git
 refuses to add them, even through a directory such as
-`git dotfiles add ~/.config/fish`, unless forced with `-f`. To add the list by
-hand:
+`git dotfiles add ~/.config/fish`, unless forced with `-f`; CI fails if a
+tracked file matches one, and Gitleaks catches keys and tokens anywhere. To
+apply the list by hand:
 
 ```bash
-mkdir -p "$HOME/.dotfiles/info"
-cat >> "$HOME/.dotfiles/info/exclude" <<'EOF'
-/.ssh/
-/.aws/credentials
-/.gnupg/
-/.netrc
-/.local/share/fish/fish_history
-/.gitconfig.local
-/.config/fish/fish_variables
-/.dotfiles-backup/
-EOF
+grep -Ev '^[[:space:]]*(#|$)' ~/.config/dotfiles/never-track >> ~/.dotfiles/info/exclude
 ```

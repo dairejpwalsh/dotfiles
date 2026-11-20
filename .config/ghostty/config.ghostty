@@ -34,6 +34,11 @@ scrollback-limit = 100000000
 # Prompt navigation and directory inheritance
 shell-integration = detect
 
+# Over SSH, fall back to TERM=xterm-256color or install Ghostty's terminfo on
+# the remote host (needs `tic` there), so servers that don't know Ghostty keep
+# working keys, `clear` and colours. Requires Ghostty 1.2 or newer.
+shell-integration-features = ssh-env,ssh-terminfo
+
 # ============================================================
 # Split management
 # ============================================================
