@@ -5,9 +5,11 @@ return {
     opts = function(_, opts)
       local filesystem_commands = require "neo-tree.sources.filesystem.commands"
 
-      -- Opening any recognised image displays metadata. GDAL is first used as
-      -- a lightweight probe; spatially referenced images are displayed with
-      -- gdalinfo, while ordinary images are displayed with ExifTool.
+      -- Recognised image formats. Opening one shows the picture through
+      -- snacks.image when Snacks can render it, and the metadata view
+      -- otherwise (camera RAW files, GeoTIFFs, ...). In the metadata view GDAL
+      -- is first used as a lightweight probe; spatially referenced images are
+      -- displayed with gdalinfo, while ordinary images use ExifTool.
       local image_exts = {
         ["3fr"] = true,
         ari = true,
@@ -75,26 +77,12 @@ return {
         xcf = true,
       }
 
+      -- Images that are also text (SVG is XML) open for editing as usual.
+      local text_image_exts = { svg = true }
+
       -- Binary raster/vector datasets are inspected instead of being opened as
       -- text. Text formats such as GeoJSON, KML, GML and VRT still open normally
       -- and can be inspected explicitly with I.
-      -- Formats opened directly through snacks.image. Other recognised image
-      -- formats (for example camera RAW files) still go to the metadata view.
-      local viewable_image_exts = {
-        avif = true,
-        bmp = true,
-        gif = true,
-        heic = true,
-        icns = true,
-        jpeg = true,
-        jpg = true,
-        png = true,
-        svg = true,
-        tif = true,
-        tiff = true,
-        webp = true,
-      }
-
       local raster_dataset_exts = {
         asc = true,
         bil = true,
@@ -137,18 +125,36 @@ return {
 
       local text_raster_exts = { vrt = true }
 
-      local function extension(path)
-        return path:lower():match "%.([a-z0-9]+)$"
-      end
+      local function extension(path) return path:lower():match "%.([a-z0-9]+)$" end
 
       local function is_image(path)
         local ext = extension(path)
         return ext and image_exts[ext] or false
       end
 
-      local function is_viewable_image(path)
+      local function is_text_image(path)
         local ext = extension(path)
-        return ext and viewable_image_exts[ext] or false
+        return ext and text_image_exts[ext] or false
+      end
+
+      local function is_tiff(path)
+        local ext = extension(path)
+        return ext == "tif" or ext == "tiff"
+      end
+
+      -- snacks.image only takes over a file through a BufReadCmd autocmd built
+      -- from its `formats` option, and that match is case-sensitive. Any image
+      -- it does not intercept would be read into a buffer as raw binary, so
+      -- check the extension exactly as written. (lua/plugins/markdown.lua adds
+      -- `tif` and upper-case variants to the formats.)
+      local function snacks_can_display(path)
+        local ext = path:match "%.([^./]+)$"
+        if not ext then return false end
+        local ok, formats = pcall(function()
+          local config = require("snacks").image.config
+          return config.enabled ~= false and config.formats or {}
+        end)
+        return ok and vim.tbl_contains(formats, ext)
       end
 
       local function is_raster_dataset(path)
@@ -224,9 +230,7 @@ return {
         return lines
       end
 
-      local function has_values(value)
-        return type(value) == "table" and next(value) ~= nil
-      end
+      local function has_values(value) return type(value) == "table" and next(value) ~= nil end
 
       local function has_geotransform(value)
         if type(value) ~= "table" then return false end
@@ -260,6 +264,17 @@ return {
         return false
       end
 
+      -- TIFF is both an ordinary image format and the usual GeoTIFF container.
+      -- GeoTIFFs are often large, multi-band or floating point, and render
+      -- slowly and poorly as pictures, so only plain TIFFs open in the image
+      -- viewer. The gdalinfo header probe is normally instant; if it fails or
+      -- takes over two seconds, fall back to the metadata view.
+      local function is_plain_tiff(path)
+        if vim.fn.executable "gdalinfo" ~= 1 then return true end
+        local result = vim.system({ "gdalinfo", "-json", path }, { text = true }):wait(2000)
+        return result.code == 0 and not is_spatial_gdal_json(result.stdout)
+      end
+
       local function display_command(buf, request_id, path, tool, command, filetype)
         if not request_is_current(buf, request_id) then return end
 
@@ -271,7 +286,7 @@ return {
           return
         end
 
-        set_request_lines(buf, request_id, { ("Loading metadata with %s..."):format(tool) }, "text")
+        set_request_lines(buf, request_id, { ("Running %s..."):format(tool) }, "text")
         run(command, function(result)
           if not request_is_current(buf, request_id) then return end
           if result.code == 0 then
@@ -346,17 +361,81 @@ return {
         end
       end
 
-      local function open_info_in_buffer(path)
-        local bufname = "metadata://" .. path
-        local existing = vim.fn.bufnr(bufname)
-        if existing ~= -1 and vim.api.nvim_buf_is_valid(existing) then
-          vim.api.nvim_set_current_buf(existing)
+      -- First rows of a table or spatial dataset, via DuckDB, sized to the
+      -- window the preview is shown in.
+      local function preview_rows(buf, path)
+        if not vim.api.nvim_buf_is_valid(buf) then return end
+        local request_id = begin_request(buf)
+        local win = vim.fn.bufwinid(buf)
+        local width = win ~= -1 and vim.api.nvim_win_get_width(win) or 200
+        local command = require("dataset_preview").command(path, { width = width })
+        if not command then
+          set_request_lines(buf, request_id, { "No row preview for this file type.", "Path: " .. path }, "text")
+          return
+        end
+        display_command(buf, request_id, path, "duckdb", command, "text")
+      end
+
+      -- Exact name lookup. vim.fn.bufnr() treats its argument as a file
+      -- pattern and accepts partial matches, so "a.tif" could find "a.tiff".
+      local function find_buffer(name)
+        for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+          if vim.api.nvim_buf_get_name(buf) == name then return buf end
+        end
+      end
+
+      -- Neo-tree evicts any other buffer shown in its sidebar window by
+      -- deleting it and editing it again by name, which would destroy a
+      -- scratch buffer. Use the window Neo-tree would open a file in, or nil
+      -- when only the tree is open.
+      local function target_window(state)
+        -- Neo-tree is in the editor window itself, so replacing it is expected.
+        if state.current_position == "current" then return vim.api.nvim_get_current_win() end
+        local win, is_neo_tree = require("neo-tree.utils").get_appropriate_window(state)
+        if is_neo_tree then return nil end
+        return win
+      end
+
+      -- Where to split when only the tree is open.
+      local function split_side(state) return state.current_position == "right" and "left" or "right" end
+
+      local function show_buffer(state, buf)
+        local win = vim.fn.bufwinid(buf)
+        if win == -1 then
+          win = target_window(state)
+          if not win then
+            vim.api.nvim_open_win(buf, true, { split = split_side(state), win = -1 })
+            return
+          end
+          vim.api.nvim_win_set_buf(win, buf)
+        end
+        vim.api.nvim_set_current_win(win)
+      end
+
+      -- Edits `file` (such as a rendered thumbnail) where Neo-tree would open it.
+      local function open_file(state, file)
+        local win = target_window(state)
+        if win then
+          vim.api.nvim_set_current_win(win)
+          vim.cmd("edit " .. vim.fn.fnameescape(file))
+        else
+          local position = split_side(state) == "left" and "topleft" or "botright"
+          vim.cmd(position .. " vsplit " .. vim.fn.fnameescape(file))
+        end
+      end
+
+      -- Opens (or focuses) a read-only scratch buffer named `scheme .. path`
+      -- and fills it with `render(buf, path)`. `r` re-renders, `q` closes.
+      local function open_view(state, scheme, path, render)
+        local bufname = scheme .. path
+        local existing = find_buffer(bufname)
+        if existing then
+          show_buffer(state, existing)
           return
         end
 
         local buf = vim.api.nvim_create_buf(false, true)
         vim.api.nvim_buf_set_name(buf, bufname)
-        vim.api.nvim_set_current_buf(buf)
         vim.bo[buf].buftype = "nofile"
         vim.bo[buf].bufhidden = "wipe"
         vim.bo[buf].filetype = "text"
@@ -364,14 +443,17 @@ return {
 
         vim.keymap.set("n", "q", function()
           if vim.api.nvim_buf_is_valid(buf) then vim.api.nvim_buf_delete(buf, { force = true }) end
-        end, { buffer = buf, silent = true, desc = "Close metadata" })
+        end, { buffer = buf, silent = true, desc = "Close" })
 
         vim.keymap.set("n", "r", function()
-          if vim.api.nvim_buf_is_valid(buf) then inspect_dataset(buf, path) end
-        end, { buffer = buf, silent = true, desc = "Refresh metadata" })
+          if vim.api.nvim_buf_is_valid(buf) then render(buf, path) end
+        end, { buffer = buf, silent = true, desc = "Refresh" })
 
-        inspect_dataset(buf, path)
+        show_buffer(state, buf)
+        render(buf, path)
       end
+
+      local function open_info_in_buffer(state, path) open_view(state, "metadata://", path, inspect_dataset) end
 
       local function selected_path(state)
         local node = state.tree:get_node()
@@ -380,7 +462,75 @@ return {
 
       local function inspect_selected(state)
         local path = selected_path(state)
-        if path then open_info_in_buffer(path) end
+        if path then open_info_in_buffer(state, path) end
+      end
+
+      -- Rasters that `E` renders as a thumbnail.
+      local thumbnail_exts = { j2k = true, jp2 = true, jpf = true, jpx = true, tif = true, tiff = true }
+      local function is_raster(path)
+        local ext = extension(path)
+        if ext and thumbnail_exts[ext] then return true end
+        return is_raster_dataset(path) or is_text_raster(path)
+      end
+
+      local thumbnail_dir
+
+      -- Renders a raster (GeoTIFF, JPEG 2000, ERDAS Imagine, VRT, ...) to a
+      -- small PNG with GDAL and opens it, so snacks.image shows it as a picture.
+      local function show_thumbnail(state, path)
+        for _, tool in ipairs { "gdalinfo", "gdal_translate" } do
+          if vim.fn.executable(tool) ~= 1 then
+            vim.notify(tool .. " is not installed or is not in PATH", vim.log.levels.WARN)
+            return
+          end
+        end
+        if not thumbnail_dir then
+          thumbnail_dir = vim.fn.tempname()
+          vim.fn.mkdir(thumbnail_dir, "p")
+        end
+        -- Named per source path, so rasters with the same file name don't collide.
+        local name = vim.fn.fnamemodify(path, ":t")
+        local stem = vim.fn.fnamemodify(path, ":t:r")
+        local out = ("%s/%s-%s.png"):format(thumbnail_dir, stem, vim.fn.sha256(path):sub(1, 8))
+        vim.notify("Rendering " .. name .. "...", vim.log.levels.INFO)
+
+        run({ "gdalinfo", "-json", path }, function(info_result)
+          local ok, info = pcall(vim.json.decode, info_result.stdout or "")
+          if info_result.code ~= 0 or not ok or type(info) ~= "table" then
+            vim.notify(("gdalinfo could not read %s:\n%s"):format(name, info_result.stderr or ""), vim.log.levels.ERROR)
+            return
+          end
+          local command = require("dataset_preview").thumbnail_command(path, info, out)
+          if not command then
+            vim.notify(name .. " has no raster bands to render (a container of subdatasets?)", vim.log.levels.WARN)
+            return
+          end
+          run(command, function(result)
+            if result.code ~= 0 then
+              vim.notify(("gdal_translate failed for %s:\n%s"):format(name, result.stderr or ""), vim.log.levels.ERROR)
+              return
+            end
+            -- Drop a thumbnail rendered earlier so the new file is read.
+            local previous = find_buffer(out)
+            if previous then vim.api.nvim_buf_delete(previous, { force = true }) end
+            open_file(state, out)
+          end)
+        end)
+      end
+
+      -- E: a thumbnail for rasters, the first rows for tables and vector data.
+      local function preview_selected(state)
+        local path = selected_path(state)
+        if not path then return end
+        if is_raster(path) then
+          show_thumbnail(state, path)
+        elseif require("dataset_preview").supports(path) then
+          open_view(state, "rows://", path, preview_rows)
+        elseif is_image(path) and snacks_can_display(path) then
+          filesystem_commands.open(state)
+        else
+          vim.notify("No preview for " .. vim.fn.fnamemodify(path, ":t"), vim.log.levels.INFO)
+        end
       end
 
       local function open_in_qgis(state)
@@ -401,33 +551,43 @@ return {
         if job <= 0 then vim.notify("Unable to start QGIS", vim.log.levels.ERROR) end
       end
 
-      local function open_or_info(state)
-        local node = state.tree:get_node()
-        if not node then return end
+      -- Builds a mapping that shows images through snacks.image and opens
+      -- binary GIS datasets in the metadata view. Anything else (directories,
+      -- ordinary files) runs `fallback`, the Neo-tree command the key would
+      -- otherwise run, so `l` keeps AstroNvim's child_or_open behaviour.
+      local function open_or_info(fallback)
+        return function(state)
+          if not state.tree:get_node() then return end
 
-        if node.type == "file" and node.path then
-          -- Images are opened normally so Snacks can render them directly in
-          -- Ghostty. Metadata remains available explicitly with the I mapping.
-          if is_viewable_image(node.path) then
-            filesystem_commands.open(state)
-            return
+          local path = selected_path(state)
+          if path then
+            if is_image(path) and not is_text_image(path) then
+              if snacks_can_display(path) and (not is_tiff(path) or is_plain_tiff(path)) then
+                filesystem_commands.open(state)
+              else
+                open_info_in_buffer(state, path)
+              end
+              return
+            end
+
+            if is_raster_dataset(path) or is_vector_dataset(path) then
+              open_info_in_buffer(state, path)
+              return
+            end
           end
 
-          if is_image(node.path) or is_raster_dataset(node.path) or is_vector_dataset(node.path) then
-            open_info_in_buffer(node.path)
-            return
-          end
+          local command = state.commands and state.commands[fallback] or filesystem_commands.open
+          command(state)
         end
-
-        filesystem_commands.open(state)
       end
 
       opts.filesystem = opts.filesystem or {}
       opts.filesystem.window = opts.filesystem.window or {}
       opts.filesystem.window.mappings = vim.tbl_deep_extend("force", opts.filesystem.window.mappings or {}, {
-        ["<cr>"] = open_or_info,
-        ["l"] = open_or_info,
+        ["<cr>"] = open_or_info "open",
+        l = open_or_info "child_or_open",
         I = inspect_selected,
+        E = preview_selected,
         Q = open_in_qgis,
       })
 

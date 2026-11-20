@@ -1,0 +1,5 @@
+# Extra packages from the CachyOS repositories, installed by
+# `bootstrap.sh --packages` only when running on CachyOS.
+
+# Fish defaults sourced by config.fish, including the pure prompt.
+cachyos-fish-config

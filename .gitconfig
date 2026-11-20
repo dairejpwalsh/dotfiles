@@ -3,5 +3,36 @@
 [user]
 	name = dairejpwalsh
 	useConfigOnly = true
+[init]
+	defaultBranch = main
+[push]
+	# Create the upstream branch on the first `git push` of a new branch.
+	autoSetupRemote = true
+[pull]
+	rebase = true
+[rebase]
+	# Let `git pull` rebase over uncommitted changes, restoring them afterwards.
+	autoStash = true
+[fetch]
+	# Drop remote-tracking branches that were deleted on the remote.
+	prune = true
+[merge]
+	# Show the common ancestor in conflicts, without the lines both sides share.
+	conflictStyle = zdiff3
+[diff]
+	algorithm = histogram
+[delta]
+	# Used when delta is the pager: Fish and Bash set GIT_PAGER=delta when it is
+	# installed. For a narrow split: git -c delta.side-by-side=false diff
+	navigate = true
+	line-numbers = true
+	side-by-side = true
+[gpg]
+	# Signing uses SSH keys. Turn it on per machine with
+	# ~/.config/dotfiles/setup-signing.sh (settings go in ~/.gitconfig.local).
+	format = ssh
+[gpg "ssh"]
+	allowedSignersFile = ~/.config/git/allowed_signers
+# Keep this last so machine-local settings override everything above.
 [include]
 	path = ~/.gitconfig.local

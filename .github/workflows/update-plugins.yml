@@ -1,0 +1,61 @@
+name: Update Neovim plugins
+
+# Weekly: update the plugins, run the Neovim smoke test against the new
+# versions, and only if it passes open (or refresh) a pull request with the
+# new lazy-lock.json. Needs "Allow GitHub Actions to create and approve pull
+# requests" (Settings > Actions > General). Run it by hand from the Actions tab;
+# the dry_run input does everything except push and open the pull request.
+
+on:
+  schedule:
+    - cron: "17 5 * * 1" # Mondays 05:17 UTC
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Update and test, but don't push or open a pull request
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  DUCKDB_VERSION: v1.5.6
+
+jobs:
+  update:
+    name: Update and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Neovim, DuckDB, GDAL, jupytext and Molten's Python host
+        run: .github/scripts/setup-neovim-ci.sh
+
+      - name: Install plugins at the locked versions
+        run: .github/scripts/install-locked-plugins.sh
+
+      - name: Update plugins
+        id: update
+        run: |
+          timeout 900 nvim --headless "+Lazy! update" +qa
+          if git diff --quiet -- .config/nvim/lazy-lock.json; then
+            echo "Every plugin is already up to date."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            git diff --stat -- .config/nvim/lazy-lock.json
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Smoke test the updated plugins
+        if: steps.update.outputs.changed == 'true'
+        run: timeout 600 nvim --headless -c "luafile .github/scripts/nvim-smoke.lua"
+
+      - name: Open or refresh the pull request
+        if: steps.update.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ inputs.dry_run || 'false' }}
+        run: .github/scripts/open-plugin-update-pr.sh

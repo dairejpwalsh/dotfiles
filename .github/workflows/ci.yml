@@ -1,0 +1,186 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  STYLUA_VERSION: v2.6.0
+  SELENE_VERSION: 0.32.0
+  GITLEAKS_VERSION: 8.30.1
+  DUCKDB_VERSION: v1.5.6
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install StyLua, selene and fish
+        run: |
+          bin="$RUNNER_TEMP/bin"
+          mkdir -p "$bin"
+          curl -fsSL -o "$RUNNER_TEMP/stylua.zip" \
+            "https://github.com/JohnnyMorganz/StyLua/releases/download/${STYLUA_VERSION}/stylua-linux-x86_64.zip"
+          curl -fsSL -o "$RUNNER_TEMP/selene.zip" \
+            "https://github.com/Kampfkarren/selene/releases/download/${SELENE_VERSION}/selene-${SELENE_VERSION}-linux.zip"
+          unzip -q "$RUNNER_TEMP/stylua.zip" -d "$bin"
+          unzip -q "$RUNNER_TEMP/selene.zip" -d "$bin"
+          chmod +x "$bin/stylua" "$bin/selene"
+          echo "$bin" >> "$GITHUB_PATH"
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq fish
+
+      - name: StyLua
+        run: stylua --check --config-path .config/nvim/.stylua.toml .config/nvim .github/scripts
+
+      - name: selene
+        if: ${{ !cancelled() }}
+        working-directory: .config/nvim
+        run: selene .
+
+      - name: Fish syntax
+        if: ${{ !cancelled() }}
+        run: |
+          for file in .config/fish/config.fish .config/fish/functions/*.fish; do
+            fish --no-execute "$file"
+          done
+
+      - name: ShellCheck
+        if: ${{ !cancelled() }}
+        run: shellcheck --shell=bash .bashrc .config/dotfiles/*.sh .github/scripts/*.sh
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Gitleaks (full history)
+        run: |
+          curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz -C "$RUNNER_TEMP" gitleaks
+          "$RUNNER_TEMP/gitleaks" git --redact --verbose .
+
+      - name: No tracked file matches never-track
+        if: ${{ !cancelled() }}
+        run: |
+          matches=$(git ls-files --cached --ignored --exclude-from=.config/dotfiles/never-track)
+          if [ -n "$matches" ]; then
+            echo "::error::These tracked files match .config/dotfiles/never-track (this repository is public):"
+            echo "$matches"
+            exit 1
+          fi
+
+  packages:
+    name: Arch package names
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    container: archlinux:latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Every package in packages.txt exists
+        run: |
+          pacman -Sy --noconfirm > /dev/null
+          packages=$(grep -Ev '^[[:space:]]*(#|$)' .config/dotfiles/packages.txt)
+          total=$(echo "$packages" | wc -l)
+          found=$(echo "$packages" | xargs pacman -Si | grep -c '^Name')
+          echo "$found of $total packages found in the Arch repositories"
+          test "$found" -eq "$total"
+
+  ghostty:
+    name: Ghostty config
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container: archlinux:latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: ghostty +validate-config
+        run: |
+          pacman -Syu --noconfirm ghostty > /dev/null
+          ghostty --version | sed -n 1p
+          ghostty +validate-config --config-file=.config/ghostty/config.ghostty
+
+  scripts:
+    name: Shell scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install fish and uv
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq fish
+          pipx install uv
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: setup-signing.sh makes commits verifiably signed
+        run: |
+          repo=$PWD
+          export HOME="$RUNNER_TEMP/signing-home"
+          mkdir -p "$HOME/.ssh"
+          cp .gitconfig "$HOME/.gitconfig"
+          ssh-keygen -q -t ed25519 -N '' -C ci -f "$HOME/.ssh/id_ed25519"
+          git config --file "$HOME/.gitconfig.local" user.email ci@example.invalid
+          "$repo/.config/dotfiles/setup-signing.sh"
+          "$repo/.config/dotfiles/setup-signing.sh" > /dev/null # safe to re-run
+          test "$(wc -l < "$HOME/.config/git/allowed_signers")" -eq 1
+          git init -q "$RUNNER_TEMP/signed"
+          cd "$RUNNER_TEMP/signed"
+          git commit -q --allow-empty -m "Signed commit"
+          git log --show-signature -1 | tee /dev/stderr | grep -q 'Good "git" signature'
+
+      - name: newproj creates a working project
+        if: ${{ !cancelled() }}
+        env:
+          XDG_CONFIG_HOME: ${{ github.workspace }}/.config
+        run: |
+          cd "$RUNNER_TEMP"
+          fish -c 'set -p fish_function_path $XDG_CONFIG_HOME/fish/functions; newproj --no-geo demo-proj'
+          cd demo-proj
+          test -f .envrc
+          uv run pytest -q
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run jupyter kernelspec list | grep -q demo-proj
+
+  neovim:
+    name: Neovim smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Neovim, DuckDB, GDAL, jupytext and Molten's Python host
+        run: .github/scripts/setup-neovim-ci.sh
+
+      - name: Install plugins at the locked versions
+        run: .github/scripts/install-locked-plugins.sh
+
+      - name: Smoke test
+        run: timeout 600 nvim --headless -c "luafile .github/scripts/nvim-smoke.lua"
+
+      - name: lazy-lock.json lists every plugin
+        run: |
+          if ! git diff --exit-code -- .config/nvim/lazy-lock.json; then
+            echo "::error::lazy-lock.json does not match the installed plugins. Apply the diff above."
+            exit 1
+          fi
+
+      - name: Python language servers attach and report diagnostics
+        if: ${{ !cancelled() }}
+        run: |
+          timeout 900 nvim --headless -c "MasonInstall basedpyright ruff" -c qall
+          timeout 420 nvim --headless -c "luafile .github/scripts/nvim-lsp.lua"
