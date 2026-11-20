@@ -67,9 +67,13 @@ NVIM_APPNAME=astronvim_geo nvim
 Three AstroCommunity Python packs are imported in `lua/community.lua`:
 
 - `pack.python.base`: `debugpy` debugging, virtual-environment selection with
-  venv-selector, and pytest integration through Neotest
+  venv-selector (`<Leader>lv`, needs `fd`), and pytest integration through
+  Neotest
 - `pack.python.basedpyright`: BasedPyright completion and type checking
 - `pack.python.ruff`: Ruff linting, import sorting, and formatting
+
+The base pack only plugs pytest into Neotest, so `test.neotest` is imported as
+well; its keys are under `<Leader>T`.
 
 Global BasedPyright overrides live in `lua/plugins/python.lua`. They are set
 through AstroLSP rather than `after/lsp/`, because the pack configures

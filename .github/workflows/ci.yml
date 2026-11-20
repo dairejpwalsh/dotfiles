@@ -112,7 +112,8 @@ jobs:
           echo "$bin" >> "$GITHUB_PATH"
           npm install --global --silent tree-sitter-cli
           sudo apt-get update -qq
-          sudo apt-get install -y -qq python3-pynvim python3-jupyter-client
+          # fd: venv-selector is only enabled when fd is installed.
+          sudo apt-get install -y -qq python3-pynvim python3-jupyter-client fd-find
 
       - name: Install plugins at the locked versions
         run: |

@@ -12,6 +12,8 @@ return {
   { import = "astrocommunity.pack.python.base" },
   { import = "astrocommunity.pack.python.basedpyright" },
   { import = "astrocommunity.pack.python.ruff" },
+  -- The base pack only adds pytest to Neotest when Neotest itself is enabled.
+  { import = "astrocommunity.test.neotest" },
 
   -- Project and geospatial data formats.
   { import = "astrocommunity.pack.json" },

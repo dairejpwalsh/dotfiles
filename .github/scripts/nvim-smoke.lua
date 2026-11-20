@@ -73,7 +73,8 @@ local function run()
   check(next(mapping "]c") == nil, "]c should be left to Vim's diff navigation")
   check((mapping("<Leader>mr").desc or ""):find "Markdown" ~= nil, "Markdown keys should stay under <Leader>m")
 
-  local filesystem = require("neo-tree.setup").config.filesystem or {}
+  -- Neo-tree merges its configuration lazily, on first use.
+  local filesystem = require("neo-tree").ensure_config().filesystem or {}
   local neo_tree_maps = vim.tbl_get(filesystem, "window", "mappings") or {}
   check(neo_tree_maps["<cr>"] or neo_tree_maps["<CR>"], "Neo-tree filesystem mapping missing: <CR>")
   for _, key in ipairs { "l", "I", "E", "Q" } do
