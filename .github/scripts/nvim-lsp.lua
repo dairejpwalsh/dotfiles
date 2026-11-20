@@ -51,13 +51,20 @@ local function run()
   check(reported, "expected a BasedPyright type error and Ruff F401 (unused import)")
 end
 
-local ok, err = xpcall(run, debug.traceback)
-check(ok, "LSP script error: " .. tostring(err))
+local function main()
+  local ok, err = xpcall(run, debug.traceback)
+  check(ok, "LSP script error: " .. tostring(err))
 
-if #failures > 0 then
-  io.stderr:write(("LSP check FAILED:\n- %s\n"):format(table.concat(failures, "\n- ")))
-  vim.cmd "cquit 1"
-else
-  io.stdout:write "LSP check passed\n"
-  vim.cmd "qall!"
+  if #failures > 0 then
+    io.stderr:write(("LSP check FAILED:\n- %s\n"):format(table.concat(failures, "\n- ")))
+    vim.cmd "cquit 1"
+  else
+    io.stdout:write "LSP check passed\n"
+    vim.cmd "qall!"
+  end
 end
+
+-- vim.lsp.enable() only attaches servers to buffers that are already open once
+-- startup has finished (v:vim_did_enter), and `-c` scripts run during startup.
+-- Like a real session, open the file after VimEnter.
+vim.api.nvim_create_autocmd("VimEnter", { once = true, callback = function() vim.schedule(main) end })

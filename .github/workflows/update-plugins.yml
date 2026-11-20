@@ -5,6 +5,10 @@ name: Update Neovim plugins
 # new lazy-lock.json. Needs "Allow GitHub Actions to create and approve pull
 # requests" (Settings > Actions > General). Run it by hand from the Actions tab;
 # the dry_run input does everything except push and open the pull request.
+#
+# The update job runs the updated plugins' code (build steps, the smoke test),
+# so it gets a read-only token and no stored Git credentials, and hands over
+# only the lockfile. The pull-request job can write but runs no plugin code.
 
 on:
   schedule:
@@ -17,8 +21,7 @@ on:
         default: false
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 env:
   DUCKDB_VERSION: v1.5.6
@@ -28,8 +31,14 @@ jobs:
     name: Update and test
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    permissions:
+      contents: read
+    outputs:
+      changed: ${{ steps.update.outputs.changed }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Install Neovim, DuckDB, GDAL, jupytext and Molten's Python host
         run: .github/scripts/setup-neovim-ci.sh
@@ -53,8 +62,32 @@ jobs:
         if: steps.update.outputs.changed == 'true'
         run: timeout 600 nvim --headless -c "luafile .github/scripts/nvim-smoke.lua"
 
-      - name: Open or refresh the pull request
+      - name: Hand over the updated lockfile
         if: steps.update.outputs.changed == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: lazy-lock
+          path: .config/nvim/lazy-lock.json
+          retention-days: 7
+
+  pull-request:
+    name: Open or refresh the pull request
+    needs: update
+    if: needs.update.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: lazy-lock
+          path: .config/nvim
+
+      - name: Open or refresh the pull request
         env:
           GH_TOKEN: ${{ github.token }}
           DRY_RUN: ${{ inputs.dry_run || 'false' }}

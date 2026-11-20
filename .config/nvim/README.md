@@ -21,7 +21,8 @@ PostGIS, structured data files, and reproducible Quarto reports.
 - Tectonic or another LaTeX engine for rendered Markdown math (optional)
 - `pynvim` and `jupyter_client` for the system Python, for Molten
   (`python-pynvim` and `python-jupyter-client` on Arch)
-- `jupytext` for opening Jupyter notebooks (`python-jupytext` on Arch)
+- `jupytext` for opening Jupyter notebooks (`uv tool install jupytext`, which
+  `bootstrap.sh --packages` runs; it is not in the Arch repositories)
 - direnv for per-project environments (optional, recommended)
 
 ### Geospatial tools

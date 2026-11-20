@@ -131,6 +131,12 @@ install_packages() {
   else
     sudo pacman -S --needed --noconfirm "${packages[@]}"
   fi
+
+  # Not in the Arch repositories; uv installs it into ~/.local/bin.
+  if ! command -v jupytext >/dev/null && command -v uv >/dev/null; then
+    log "Installing jupytext with uv"
+    uv tool install --quiet jupytext
+  fi
 }
 
 usage() {
